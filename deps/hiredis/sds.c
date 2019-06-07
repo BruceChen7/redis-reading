@@ -247,7 +247,7 @@ sds sdsMakeRoomFor(sds s, size_t addlen) {
         if (newsh == NULL) return NULL;
 		// 拷贝原来的整个字符串
         memcpy((char*)newsh+hdrlen, s, len+1);
-		// 删除整个头
+        // 删除整个头，注意柔性数组分配的空间也是被删除的
         s_free(sh);
         s = (char*)newsh+hdrlen;
         s[-1] = type; // 设置新的头
@@ -268,11 +268,13 @@ sds sdsRemoveFreeSpace(sds s) {
     char type, oldtype = s[-1] & SDS_TYPE_MASK;
     int hdrlen;
     size_t len = sdslen(s);
+    // 获取头
     sh = (char*)s-sdsHdrSize(oldtype);
 
     type = sdsReqType(len);
     hdrlen = sdsHdrSize(type);
     if (oldtype==type) {
+    	// 重新分配空间，删除多余的空间
         newsh = s_realloc(sh, hdrlen+len+1);
         if (newsh == NULL) return NULL;
         s = (char*)newsh+hdrlen;
@@ -297,13 +299,16 @@ sds sdsRemoveFreeSpace(sds s) {
  * 4) The implicit null term.
  */
 size_t sdsAllocSize(sds s) {
+	// 字符串本身的空间
     size_t alloc = sdsalloc(s);
+    //  头空间 + 字符串本身分配的空间 + 空字符串的空间
     return sdsHdrSize(s[-1])+alloc+1;
 }
 
 /* Return the pointer of the actual SDS allocation (normally SDS strings
  * are referenced by the start of the string buffer). */
 void *sdsAllocPtr(sds s) {
+	// 返回了指向header的指针
     return (void*) (s-sdsHdrSize(s[-1]));
 }
 

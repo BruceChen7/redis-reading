@@ -420,12 +420,15 @@ sds sdscatsds(sds s, const sds t) {
 /* Destructively modify the sds string 's' to hold the specified binary
  * safe string pointed by 't' of length 'len' bytes. */
 sds sdscpylen(sds s, const char *t, size_t len) {
+	// 分配的空间小于 len，那么重新分配空间
     if (sdsalloc(s) < len) {
         s = sdsMakeRoomFor(s,len-sdslen(s));
         if (s == NULL) return NULL;
     }
+    // 拷贝n个字符串
     memcpy(s, t, len);
     s[len] = '\0';
+    // 设置字符串的长度
     sdssetlen(s, len);
     return s;
 }
@@ -534,8 +537,10 @@ sds sdscatvprintf(sds s, const char *fmt, va_list ap) {
     while(1) {
         buf[buflen-2] = '\0';
         va_copy(cpy,ap);
+        // 直接使用svnprintf来格式化字符串
         vsnprintf(buf, buflen, fmt, cpy);
         va_end(cpy);
+        // 这个字符串被重写了，说明上次分配的空间太小，重新分配
         if (buf[buflen-2] != '\0') {
             if (buf != staticbuf) s_free(buf);
             buflen *= 2;
@@ -759,14 +764,14 @@ void sdsrange(sds s, ssize_t start, ssize_t end) {
 /* Apply tolower() to every character of the sds string 's'. */
 void sdstolower(sds s) {
     size_t len = sdslen(s), j;
-
+	// 将每个字符变成小写
     for (j = 0; j < len; j++) s[j] = tolower(s[j]);
 }
 
 /* Apply toupper() to every character of the sds string 's'. */
 void sdstoupper(sds s) {
     size_t len = sdslen(s), j;
-
+	// 将每个字符变成大写
     for (j = 0; j < len; j++) s[j] = toupper(s[j]);
 }
 
@@ -1095,6 +1100,7 @@ sds sdsjoin(char **argv, int argc, char *sep) {
 }
 
 /* Like sdsjoin, but joins an array of SDS strings. */
+// hello|world|hello这种模式
 sds sdsjoinsds(sds *argv, int argc, const char *sep, size_t seplen) {
     sds join = sdsempty();
     int j;
