@@ -471,16 +471,19 @@ static sds cliVersion(void) {
     return version;
 }
 
+// group的帮助文件和命令的帮助文件用helpEntry完全
 static void cliInitHelp(void) {
-	// 命令行的帮助文件
+	// 命令行的帮助文件初始化
+	// 
     int commandslen = sizeof(commandHelp)/sizeof(struct commandHelp);
     int groupslen = sizeof(commandGroups)/sizeof(char*);
     int i, len, pos = 0;
     helpEntry tmp;
-
+	// helpEntriesLen为gro
     helpEntriesLen = len = commandslen+groupslen;
     helpEntries = zmalloc(sizeof(helpEntry)*len);
 
+	// group命令初始化
     for (i = 0; i < groupslen; i++) {
         tmp.argc = 1;
         tmp.argv = zmalloc(sizeof(sds));
@@ -491,6 +494,7 @@ static void cliInitHelp(void) {
         helpEntries[pos++] = tmp;
     }
 
+	// command命令初始化
     for (i = 0; i < commandslen; i++) {
         tmp.argv = sdssplitargs(commandHelp[i].name,&tmp.argc);
         tmp.full = sdsnew(commandHelp[i].name);
@@ -1589,6 +1593,7 @@ static int issueCommand(int argc, char **argv) {
  * the remaining Lua script (after "e " or "eval ") to be passed verbatim
  * as a single big argument. */
 static sds *cliSplitArgs(char *line, int *argc) {
+	// strstr找到evel 字符串开始，e 开始
     if (config.eval_ldb && (strstr(line,"eval ") == line ||
                             strstr(line,"e ") == line))
     {
@@ -1644,6 +1649,7 @@ void cliLoadPreferences(void) {
     sdsfree(rcfile);
 }
 
+// 这个函数用来计算
 static void repl(void) {
     sds historyfile = NULL;
     int history = 0;

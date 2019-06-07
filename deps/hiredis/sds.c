@@ -54,6 +54,7 @@ static inline int sdsHdrSize(char type) {
     return 0;
 }
 
+// 根据字符串的长度来决定使用哪种类型
 static inline char sdsReqType(size_t string_size) {
     if (string_size < 32)
         return SDS_TYPE_5;
@@ -81,18 +82,26 @@ static inline char sdsReqType(size_t string_size) {
 sds sdsnewlen(const void *init, size_t initlen) {
     void *sh;
     sds s;
+	// 根据长度来分配长度
     char type = sdsReqType(initlen);
     /* Empty strings are usually created in order to append. Use type 8
      * since type 5 is not good at this. */
     if (type == SDS_TYPE_5 && initlen == 0) type = SDS_TYPE_8;
+	// 获取sds头
     int hdrlen = sdsHdrSize(type);
     unsigned char *fp; /* flags pointer. */
-
+	// 只用zmalloc
     sh = s_malloc(hdrlen+initlen+1);
+
     if (sh == NULL) return NULL;
     if (!init)
+		// 初始化值
         memset(sh, 0, hdrlen+initlen+1);
+
+	// 直接指向了柔性数组
     s = (char*)sh+hdrlen;
+	
+	// 获取flag对应的指针
     fp = ((unsigned char*)s)-1;
     switch(type) {
         case SDS_TYPE_5: {
@@ -128,8 +137,10 @@ sds sdsnewlen(const void *init, size_t initlen) {
             break;
         }
     }
+	// 直接深拷贝
     if (initlen && init)
         memcpy(s, init, initlen);
+	// 以0结尾
     s[initlen] = '\0';
     return s;
 }
@@ -137,6 +148,7 @@ sds sdsnewlen(const void *init, size_t initlen) {
 /* Create an empty (zero length) sds string. Even in this case the string
  * always has an implicit null term. */
 sds sdsempty(void) {
+	//返回一个\0结尾的字符串
     return sdsnewlen("",0);
 }
 
@@ -148,12 +160,15 @@ sds sdsnew(const char *init) {
 
 /* Duplicate an sds string. */
 sds sdsdup(const sds s) {
+	// 深拷贝一个字符串
     return sdsnewlen(s, sdslen(s));
 }
 
 /* Free an sds string. No operation is performed if 's' is NULL. */
 void sdsfree(sds s) {
     if (s == NULL) return;
+	// 删除真个柔性字符串
+	// s[-1]表示的是type
     s_free((char*)s-sdsHdrSize(s[-1]));
 }
 
@@ -193,6 +208,7 @@ void sdsclear(sds s) {
  * by sdslen(), but only the free buffer space we have. */
 sds sdsMakeRoomFor(sds s, size_t addlen) {
     void *sh, *newsh;
+	// 获取对应多余的空间
     size_t avail = sdsavail(s);
     size_t len, newlen;
     char type, oldtype = s[-1] & SDS_TYPE_MASK;
@@ -200,13 +216,15 @@ sds sdsMakeRoomFor(sds s, size_t addlen) {
 
     /* Return ASAP if there is enough space left. */
     if (avail >= addlen) return s;
-
+	// 目前的字符串长度
     len = sdslen(s);
+	// 指向了整个头
     sh = (char*)s-sdsHdrSize(oldtype);
     newlen = (len+addlen);
+	// 指数扩大
     if (newlen < SDS_MAX_PREALLOC)
         newlen *= 2;
-    else
+    else     // 大于，则只是增加
         newlen += SDS_MAX_PREALLOC;
 
     type = sdsReqType(newlen);
@@ -220,19 +238,22 @@ sds sdsMakeRoomFor(sds s, size_t addlen) {
     if (oldtype==type) {
         newsh = s_realloc(sh, hdrlen+newlen+1);
         if (newsh == NULL) return NULL;
+		// 新的字符串
         s = (char*)newsh+hdrlen;
     } else {
         /* Since the header size changes, need to move the string forward,
          * and can't use realloc */
         newsh = s_malloc(hdrlen+newlen+1);
         if (newsh == NULL) return NULL;
+		// 拷贝原来的整个字符串
         memcpy((char*)newsh+hdrlen, s, len+1);
+		// 删除整个头
         s_free(sh);
         s = (char*)newsh+hdrlen;
-        s[-1] = type;
-        sdssetlen(s, len);
+        s[-1] = type; // 设置新的头
+        sdssetlen(s, len); // 设置新的长度
     }
-    sdssetalloc(s, newlen);
+    sdssetalloc(s, newlen);  // 设置分配的长度
     return s;
 }
 
