@@ -39,6 +39,7 @@
 #ifndef __TESTHELP_H
 #define __TESTHELP_H
 
+// 简单的定义宏，来进行单元测试
 int __failed_tests = 0;
 int __test_num = 0;
 #define test_cond(descr,_c) do { \

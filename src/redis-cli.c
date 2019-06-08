@@ -734,8 +734,9 @@ static void freeHintsCallback(void *ptr) {
 /* Send AUTH command to the server */
 static int cliAuth(void) {
     redisReply *reply;
+    // 如果是没有设置密码认真
     if (config.auth == NULL) return REDIS_OK;
-
+	// 发送AUTH命令
     reply = redisCommand(context,"AUTH %s",config.auth);
     if (reply != NULL) {
         freeReplyObject(reply);
@@ -766,16 +767,18 @@ static int cliSelect(void) {
 static int cliConnect(int flags) {
     if (context == NULL || flags & CC_FORCE) {
         if (context != NULL) {
-            redisFree(context);
+            redisFree(context); // 删除以前的context
         }
 
         if (config.hostsocket == NULL) {
+        	// 连接服务器
             context = redisConnect(config.hostip,config.hostport);
         } else {
             context = redisConnectUnix(config.hostsocket);
         }
 
         if (context->err) {
+        	// 把错误的日志信息打印出来
             if (!(flags & CC_QUIET)) {
                 fprintf(stderr,"Could not connect to Redis at ");
                 if (config.hostsocket == NULL)
@@ -794,10 +797,10 @@ static int cliConnect(int flags) {
          * in order to prevent timeouts caused by the execution of long
          * commands. At the same time this improves the detection of real
          * errors. */
-        anetKeepAlive(NULL, context->fd, REDIS_CLI_KEEPALIVE_INTERVAL);
+        anetKeepAlive(NULL, context->fd, REDIS_CLI_KEEPALIVE_INTERVAL);   // 心跳时间为15s
 
         /* Do AUTH and select the right DB. */
-        if (cliAuth() != REDIS_OK)
+        if (cliAuth() != REDIS_OK) //验证用户名和密码
             return REDIS_ERR;
         if (cliSelect() != REDIS_OK)
             return REDIS_ERR;

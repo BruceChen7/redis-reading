@@ -709,8 +709,10 @@ sds sdstrim(sds s, const char *cset) {
     sp = start = s;
     ep = end = s+sdslen(s)-1;
     while(sp <= end && strchr(cset, *sp)) sp++;
+    // strchr表示在字符串cset中找一个单词是否找到
     while(ep > sp && strchr(cset, *ep)) ep--;
     len = (sp > ep) ? 0 : ((ep-sp)+1);
+    // 没有越界
     if (s != sp) memmove(s, sp, len);
     s[len] = '\0';
     sdssetlen(s,len);
@@ -738,6 +740,7 @@ void sdsrange(sds s, ssize_t start, ssize_t end) {
 
     if (len == 0) return;
     if (start < 0) {
+    	// 获取新的开始index
         start = len+start;
         if (start < 0) start = 0;
     }
@@ -747,16 +750,16 @@ void sdsrange(sds s, ssize_t start, ssize_t end) {
     }
     newlen = (start > end) ? 0 : (end-start)+1;
     if (newlen != 0) {
-        if (start >= (ssize_t)len) {
+        if (start >= (ssize_t)len) {    // 起始位置超过了原先的长度，那么新的sds为0
             newlen = 0;
         } else if (end >= (ssize_t)len) {
-            end = len-1;
+            end = len-1;    // end 调整
             newlen = (start > end) ? 0 : (end-start)+1;
         }
     } else {
         start = 0;
     }
-    if (start && newlen) memmove(s, s+start, newlen);
+    if (start && newlen) memmove(s, s+start, newlen);   // memove和memcpy的使用
     s[newlen] = 0;
     sdssetlen(s,newlen);
 }
@@ -786,6 +789,7 @@ void sdstoupper(sds s) {
  * If two strings share exactly the same prefix, but one of the two has
  * additional characters, the longer string is considered to be greater than
  * the smaller one. */
+ // 类似于strcmp中比较
 int sdscmp(const sds s1, const sds s2) {
     size_t l1, l2, minlen;
     int cmp;

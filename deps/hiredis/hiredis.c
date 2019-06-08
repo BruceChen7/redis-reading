@@ -221,20 +221,21 @@ int redisvFormatCommand(char **target, const char *format, va_list ap) {
     int j;
 
     /* Abort if there is not target to set */
-	// 命令为空，返回-1
+	// target会存按照redis协议的序列化后的命令字符串，
+	// 没有，则表示出错
     if (target == NULL)
         return -1;
 
     /* Build the command string accordingly to protocol */
-    curarg = sdsempty();
+    curarg = sdsempty();   // 创建一个新的命令
     if (curarg == NULL)
         return -1;
 
+	// 是不是到了格式化字符串的末尾
     while(*c != '\0') {
         if (*c != '%' || c[1] == '\0') {
             if (*c == ' ') {
                 if (touched) {
-					// 重新创建命令字
 					// curargv is a char* array
                     newargv = realloc(curargv,sizeof(char*)*(argc+1));
                     if (newargv == NULL) goto memory_err;
@@ -248,22 +249,23 @@ int redisvFormatCommand(char **target, const char *format, va_list ap) {
                     touched = 0;
                 }
             } else {
+            	// 普通的字符串你，则是将该字符连接起来
                 newarg = sdscatlen(curarg,c,1);
                 if (newarg == NULL) goto memory_err;
                 curarg = newarg;
                 touched = 1;
             }
         } else { // meet %  or the last -1 char
+			// 这个分支为c[0] == '%' && c[1] != '\0'
             char *arg;
             size_t size;
 
             /* Set newarg so it can be checked even if it is not touched. */
-            newarg = curarg;
-            // 控制字符进行描述
-			// s
+            newarg = curarg; //
+            // 格式控制字符进行描述
             switch(c[1]) {
             case 's':
-				// 如果是字符
+				// 如果是字符串
                 arg = va_arg(ap,char*);
                 size = strlen(arg);
                 if (size > 0)
@@ -290,12 +292,13 @@ int redisvFormatCommand(char **target, const char *format, va_list ap) {
                     size_t _l = 0;
                     va_list _cpy;
 
-                    /* Flags */
+                    /* Flags */ 
+                    // 忽略掉这些符号
                     while (*_p != '\0' && strchr(flags,*_p) != NULL) _p++;
-
+					// 忽略掉位宽
                     /* Field width */
                     while (*_p != '\0' && isdigit(*_p)) _p++;
-
+					// 忽略掉精度
                     /* Precision */
                     if (*_p == '.') {
                         _p++;
@@ -308,7 +311,7 @@ int redisvFormatCommand(char **target, const char *format, va_list ap) {
                     /* Integer conversion (without modifiers) */
                     if (strchr(intfmts,*_p) != NULL) {
                         va_arg(ap,int);
-                        goto fmt_valid;
+                        goto fmt_valid; // 找到了对应的格式串
                     }
 
                     /* Double conversion (without modifiers) */
@@ -389,9 +392,11 @@ int redisvFormatCommand(char **target, const char *format, va_list ap) {
 
     /* Add the last argument if needed */
     if (touched) {
-        newargv = realloc(curargv,sizeof(char*)*(argc+1));
+    	// 返回序列化的字符串数组
+        newargv = realloc(curargv, sizeof(char*)*(argc+1));
         if (newargv == NULL) goto memory_err;
         curargv = newargv;
+        // 最后一个参数防止最后面
         curargv[argc++] = curarg;
         totlen += bulklen(sdslen(curarg));
     } else {
@@ -415,16 +420,24 @@ int redisvFormatCommand(char **target, const char *format, va_list ap) {
 	// $5\r\n
 	// mykey\r\n mykey 为命令字
 	// "*3\r\n$3\r\nSET\r\n$5\r\nmykey\r\n$7\r\nmyvalue\r\n"
+	// https://redis.io/topics/protocol
+	// *<参数数量>CRLF
+	// $参数1的字节数CRLF
+	// $参数2的字节数CRLF
+	
     pos = sprintf(cmd,"*%d\r\n",argc);
     for (j = 0; j < argc; j++) {
         pos += sprintf(cmd+pos,"$%zu\r\n",sdslen(curargv[j]));
         memcpy(cmd+pos,curargv[j],sdslen(curargv[j]));
         pos += sdslen(curargv[j]);
         sdsfree(curargv[j]);
+        // 在每个后面的末尾加\r\n
         cmd[pos++] = '\r';
         cmd[pos++] = '\n';
     }
+    // 序列化后的总字符串相等
     assert(pos == totlen);
+    // 以\0结尾
     cmd[pos] = '\0';
 
     free(curargv);
@@ -1024,6 +1037,7 @@ void *redisvCommand(redisContext *c, const char *format, va_list ap) {
     return __redisBlockForReply(c);
 }
 
+// 应该是使用redis协议来序列化命令
 void *redisCommand(redisContext *c, const char *format, ...) {
     va_list ap;
     void *reply = NULL;
