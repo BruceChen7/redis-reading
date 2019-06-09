@@ -52,6 +52,7 @@ static void *createNilObject(const redisReadTask *task);
 /* Default set of functions to build the reply. Keep in mind that such a
  * function returning NULL is interpreted as OOM. */
 static redisReplyObjectFunctions defaultFunctions = {
+	// 创建字符串对象的回调
     createStringObject,
     createArrayObject,
     createIntegerObject,
@@ -122,10 +123,11 @@ static void *createStringObject(const redisReadTask *task, char *str, size_t len
     buf[len] = '\0';
     r->str = buf;
     r->len = len;
-
+	// 如果有父task，那么
     if (task->parent) {
         parent = task->parent->obj;
         assert(parent->type == REDIS_REPLY_ARRAY);
+        // 将生成的reply对象放在父redis
         parent->element[task->idx] = r;
     }
     return r;
@@ -139,13 +141,14 @@ static void *createArrayObject(const redisReadTask *task, int elements) {
         return NULL;
 
     if (elements > 0) {
+    	// 本身分配空间
         r->element = calloc(elements,sizeof(redisReply*));
         if (r->element == NULL) {
             freeReplyObject(r);
             return NULL;
         }
     }
-
+	// 容量
     r->elements = elements;
 
     if (task->parent) {
@@ -207,7 +210,7 @@ static size_t bulklen(size_t len) {
     return 1+countDigits(len)+2+len+2;
 }
 
-// format is "Get %b xxx“
+// format is "Get %b xxx"
 int redisvFormatCommand(char **target, const char *format, va_list ap) {
     const char *c = format;
     char *cmd = NULL; /* final command */
@@ -613,6 +616,7 @@ void __redisSetError(redisContext *c, int type, const char *str) {
     }
 }
 
+// 用各个类型对象的回调函数来创建
 redisReader *redisReaderCreate(void) {
     return redisReaderCreateWithFunctions(&defaultFunctions);
 }
@@ -880,6 +884,7 @@ int redisBufferWrite(redisContext *c, int *done) {
                 sdsfree(c->obuf);
                 c->obuf = sdsempty();
             } else {
+            	// 移动未写完的字节到最前面
                 sdsrange(c->obuf,nwritten,-1);
             }
         }
@@ -904,19 +909,23 @@ int redisGetReply(redisContext *c, void **reply) {
     void *aux = NULL;
 
     /* Try to read pending replies */
+    // 先读之前并没有读完的
     if (redisGetReplyFromReader(c,&aux) == REDIS_ERR)
         return REDIS_ERR;
 
     /* For the blocking context, flush output buffer and read reply */
     if (aux == NULL && c->flags & REDIS_BLOCK) {
+		// 一直写
         /* Write until done */
         do {
+        	// 然后再写
             if (redisBufferWrite(c,&wdone) == REDIS_ERR)
                 return REDIS_ERR;
         } while (!wdone);
 
         /* Read until there is a reply */
         do {
+        	//
             if (redisBufferRead(c) == REDIS_ERR)
                 return REDIS_ERR;
             if (redisGetReplyFromReader(c,&aux) == REDIS_ERR)
@@ -938,7 +947,7 @@ int redisGetReply(redisContext *c, void **reply) {
  */
 int __redisAppendCommand(redisContext *c, const char *cmd, size_t len) {
     sds newbuf;
-
+	// 将redisContext的obufs设置序列化的的命令
     newbuf = sdscatlen(c->obuf,cmd,len);
     if (newbuf == NULL) {
         __redisSetError(c,REDIS_ERR_OOM,"Out of memory");
@@ -975,7 +984,7 @@ int redisvAppendCommand(redisContext *c, const char *format, va_list ap) {
         free(cmd);
         return REDIS_ERR;
     }
-
+	// redisvFormatCommand new出来的命令
     free(cmd);
     return REDIS_OK;
 }
@@ -1022,7 +1031,7 @@ int redisAppendCommandArgv(redisContext *c, int argc, const char **argv, const s
  */
 static void *__redisBlockForReply(redisContext *c) {
     void *reply;
-
+	// 阻塞式的获取redis的命令
     if (c->flags & REDIS_BLOCK) {
         if (redisGetReply(c,&reply) != REDIS_OK)
             return NULL;
@@ -1031,6 +1040,7 @@ static void *__redisBlockForReply(redisContext *c) {
     return NULL;
 }
 
+//直接将序列化后的命令发送给服务器
 void *redisvCommand(redisContext *c, const char *format, va_list ap) {
     if (redisvAppendCommand(c,format,ap) != REDIS_OK)
         return NULL;

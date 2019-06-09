@@ -108,6 +108,7 @@ static void __redisReaderSetErrorOOM(redisReader *r) {
 
 static char *readBytes(redisReader *r, unsigned int bytes) {
     char *p;
+    // 读取bytes字节的数量
     if (r->len-r->pos >= bytes) {
         p = r->buf+r->pos;
         r->pos += bytes;
@@ -175,8 +176,9 @@ static long long readLongLong(char *s) {
 static char *readLine(redisReader *r, int *_len) {
     char *p, *s;
     int len;
-
+	// 开始位置
     p = r->buf+r->pos;
+    // 找到了一行
     s = seekNewline(p,(r->len-r->pos));
     if (s != NULL) {
         len = s-(r->buf+r->pos);
@@ -199,6 +201,7 @@ static void moveToNextTask(redisReader *r) {
         cur = &(r->rstack[r->ridx]);
         prv = &(r->rstack[r->ridx-1]);
         assert(prv->type == REDIS_REPLY_ARRAY);
+
         if (cur->idx == prv->elements-1) {
             r->ridx--;
         } else {
@@ -213,15 +216,17 @@ static void moveToNextTask(redisReader *r) {
 }
 
 static int processLineItem(redisReader *r) {
+	// 获取当前读取task
     redisReadTask *cur = &(r->rstack[r->ridx]);
     void *obj;
     char *p;
     int len;
-
+	// 读取一行后
     if ((p = readLine(r,&len)) != NULL) {
         if (cur->type == REDIS_REPLY_INTEGER) {
             if (r->fn && r->fn->createInteger)
-                obj = r->fn->createInteger(cur,readLongLong(p));
+            	// 创建一个整数对象
+                obj = r->fn->createInteger(cur, readLongLong(p));
             else
                 obj = (void*)REDIS_REPLY_INTEGER;
         } else {
@@ -245,7 +250,7 @@ static int processLineItem(redisReader *r) {
 
     return REDIS_ERR;
 }
-
+		
 static int processBulkItem(redisReader *r) {
     redisReadTask *cur = &(r->rstack[r->ridx]);
     void *obj = NULL;
@@ -370,18 +375,22 @@ static int processItem(redisReader *r) {
 
     /* check if we need to read type */
     if (cur->type < 0) {
+    	// 获取socket中的一个字节
+    	// 这里只是移动了指针一个字节
         if ((p = readBytes(r,1)) != NULL) {
             switch (p[0]) {
             case '-':
+            	// 回复协议错误
                 cur->type = REDIS_REPLY_ERROR;
                 break;
-            case '+':
+            case '+': // 回复状态
                 cur->type = REDIS_REPLY_STATUS;
                 break;
             case ':':
+            	// 是整数
                 cur->type = REDIS_REPLY_INTEGER;
                 break;
-            case '$':
+            case '$': // 是字符串
                 cur->type = REDIS_REPLY_STRING;
                 break;
             case '*':
@@ -402,6 +411,7 @@ static int processItem(redisReader *r) {
     case REDIS_REPLY_ERROR:
     case REDIS_REPLY_STATUS:
     case REDIS_REPLY_INTEGER:
+    	// 按照一行的协议读取即可
         return processLineItem(r);
     case REDIS_REPLY_STRING:
         return processBulkItem(r);
@@ -424,7 +434,7 @@ redisReader *redisReaderCreateWithFunctions(redisReplyObjectFunctions *fn) {
     r->errstr[0] = '\0';
     r->fn = fn;
     r->buf = sdsempty();
-    r->maxbuf = REDIS_READER_MAX_BUF;
+    r->maxbuf = REDIS_READER_MAX_BUF;  // 16KB
     if (r->buf == NULL) {
         free(r);
         return NULL;
@@ -484,6 +494,7 @@ int redisReaderGetReply(redisReader *r, void **reply) {
         return REDIS_ERR;
 
     /* When the buffer is empty, there will never be a reply. */
+    // buffer是空的
     if (r->len == 0)
         return REDIS_OK;
 

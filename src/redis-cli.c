@@ -511,7 +511,7 @@ static void cliInitHelp(void) {
  * available in recent versions of Redis. */
 static void cliIntegrateHelp(void) {
     if (cliConnect(CC_QUIET) == REDIS_ERR) return;
-
+	// 直接发布COMMAND
     redisReply *reply = redisCommand(context, "COMMAND");
     if(reply == NULL || reply->type != REDIS_REPLY_ARRAY) return;
 
@@ -734,7 +734,7 @@ static void freeHintsCallback(void *ptr) {
 /* Send AUTH command to the server */
 static int cliAuth(void) {
     redisReply *reply;
-    // 如果是没有设置密码认真
+    // 如果是没有设置认证，直接返回
     if (config.auth == NULL) return REDIS_OK;
 	// 发送AUTH命令
     reply = redisCommand(context,"AUTH %s",config.auth);
@@ -1736,6 +1736,7 @@ static void repl(void) {
                     linenoiseFree(line);
                     continue;
                 } else if (strcasecmp(argv[0],"restart") == 0) {
+                	// 在命令行中，直接返回
                     if (config.eval) {
                         config.eval_ldb = 1;
                         config.output = OUTPUT_RAW;
@@ -1755,7 +1756,7 @@ static void repl(void) {
                 } else {
                     long long start_time = mstime(), elapsed;
 
-					// 发布命令
+					// 发布命令，这个主要的流程
                     issueCommandRepeat(argc-skipargs, argv+skipargs, repeat);
 
                     /* If our debugging session ended, show the EVAL final
@@ -6756,7 +6757,7 @@ int main(int argc, char **argv) {
     }
 
     /* Otherwise, we have some arguments to execute */
-    if (cliConnect(0) != REDIS_OK) exit(1);
+    if (cliConnect(0)!= REDIS_OK) exit(1);
     if (config.eval) {
         return evalMode(argc,argv);
     } else {
