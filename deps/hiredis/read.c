@@ -197,19 +197,20 @@ static void moveToNextTask(redisReader *r) {
             r->ridx--;
             return;
         }
-
+		
         cur = &(r->rstack[r->ridx]);
         prv = &(r->rstack[r->ridx-1]);
         assert(prv->type == REDIS_REPLY_ARRAY);
-
+		// 当前任务是父节点记录的子任务数
+		// 那么下次应该处理父节点，也就是父任务
         if (cur->idx == prv->elements-1) {
             r->ridx--;
         } else {
             /* Reset the type because the next item can be anything */
             assert(cur->idx < prv->elements);
-            cur->type = -1;
-            cur->elements = -1;
-            cur->idx++;
+            cur->type = -1; // 值初始化为-1
+            cur->elements = -1; // 负责的子节点为-1
+            cur->idx++; // 当前处理的redisReply编号加 + 1
             return;
         }
     }
@@ -319,6 +320,8 @@ static int processMultiBulkItem(redisReader *r) {
     }
 
     if ((p = readLine(r,NULL)) != NULL) {
+    	// *3\r\n:11\r\n:12\r\n:13\r\n*3\r\n:21\r\n:22\r\n:23\r\n:31\r\n
+    	// 这里elements为3
         elements = readLongLong(p);
         root = (r->ridx == 0);
 
@@ -336,6 +339,7 @@ static int processMultiBulkItem(redisReader *r) {
             moveToNextTask(r);
         } else {
             if (r->fn && r->fn->createArray)
+            	// obj为redisReply结构体
                 obj = r->fn->createArray(cur,elements);
             else
                 obj = (void*)REDIS_REPLY_ARRAY;
@@ -349,12 +353,16 @@ static int processMultiBulkItem(redisReader *r) {
             if (elements > 0) {
                 cur->elements = elements;
                 cur->obj = obj;
-                r->ridx++;
+                r->ridx++; 
                 r->rstack[r->ridx].type = -1;
                 r->rstack[r->ridx].elements = -1;
+                // 子层处理的reply编号从0开始
                 r->rstack[r->ridx].idx = 0;
+                // 子层处理的回复对象现在是空
                 r->rstack[r->ridx].obj = NULL;
+                // 设置父层
                 r->rstack[r->ridx].parent = cur;
+                // 设置是由数据
                 r->rstack[r->ridx].privdata = r->privdata;
             } else {
                 moveToNextTask(r);
@@ -476,7 +484,7 @@ int redisReaderFeed(redisReader *r, const char *buf, size_t len) {
             __redisReaderSetErrorOOM(r);
             return REDIS_ERR;
         }
-
+		// 获取读取的字节流
         r->buf = newbuf;
         r->len = sdslen(r->buf);
     }
@@ -495,6 +503,7 @@ int redisReaderGetReply(redisReader *r, void **reply) {
 
     /* When the buffer is empty, there will never be a reply. */
     // buffer是空的
+    // 在调用redisReaderGetReply之前实际上buffer缓冲了数据的
     if (r->len == 0)
         return REDIS_OK;
 

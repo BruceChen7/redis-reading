@@ -150,7 +150,7 @@ static void *createArrayObject(const redisReadTask *task, int elements) {
     }
 	// 容量
     r->elements = elements;
-
+	// 这里指得是？？？
     if (task->parent) {
         parent = task->parent->obj;
         assert(parent->type == REDIS_REPLY_ARRAY);
@@ -631,6 +631,7 @@ static redisContext *redisContextInit(void) {
     c->err = 0;
     c->errstr[0] = '\0';
     c->obuf = sdsempty();
+    // 创建一个reader
     c->reader = redisReaderCreate();
     c->tcp.host = NULL;
     c->tcp.source_addr = NULL;

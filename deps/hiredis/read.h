@@ -62,8 +62,11 @@ extern "C" {
 
 typedef struct redisReadTask {
     int type;
+    // 回复为Array时，创建的子Reply中数量
+    // 也就是obj->element中的个数
     int elements; /* number of elements in multibulk container */
     int idx; /* index in parent (array) object */
+    // 实际上指的是redisReply
     void *obj; /* holds user-generated value for a read task */
     struct redisReadTask *parent; /* parent task */
     void *privdata; /* user-settable arbitrary field */
@@ -77,16 +80,16 @@ typedef struct redisReplyObjectFunctions {
     void (*freeObject)(void*);
 } redisReplyObjectFunctions;
 
-// 用来表示读取redis服务器的buffer
+
 typedef struct redisReader {
     int err; /* Error flags, 0 when there is no error */
     char errstr[128]; /* String representation of error when applicable */
-
+	// 用来表示读取redis服务器的buffer
     char *buf; /* Read buffer */
     size_t pos; /* Buffer cursor */
     size_t len; /* Buffer length */
     size_t maxbuf; /* Max length of unused buffer */
-
+	// 这里是栈内存
     redisReadTask rstack[9];
     int ridx; /* Index of current read task */
     void *reply; /* Temporary reply pointer */
