@@ -331,20 +331,21 @@ unsigned int zipIntSize(unsigned char encoding) {
  * header stored in 'p'. */
 unsigned int zipStoreEntryEncoding(unsigned char *p, unsigned char encoding, unsigned int rawlen) {
     unsigned char len = 1, buf[5];
-
+	// 如果是字符串
     if (ZIP_IS_STR(encoding)) {
         /* Although encoding is given it may not be set for strings,
          * so we determine it here using the raw length. */
         if (rawlen <= 0x3f) {
+       		//小于63个字节
             if (!p) return len;
             buf[0] = ZIP_STR_06B | rawlen;
-        } else if (rawlen <= 0x3fff) {
+        } else if (rawlen <= 0x3fff) { // 小于16383个字节
             len += 1;
             if (!p) return len;
             buf[0] = ZIP_STR_14B | ((rawlen >> 8) & 0x3f);
             buf[1] = rawlen & 0xff;
         } else {
-            len += 4;
+            len += 4;  
             if (!p) return len;
             buf[0] = ZIP_STR_32B;
             buf[1] = (rawlen >> 24) & 0xff;
@@ -407,6 +408,9 @@ int zipStorePrevEntryLengthLarge(unsigned char *p, unsigned int len) {
  * number of bytes needed to encode this length if "p" is NULL. */
 unsigned int zipStorePrevEntryLength(unsigned char *p, unsigned int len) {
     if (p == NULL) {
+   		// 如果小于254个char，那么返回1，这里的1表示一个字节
+   		// sizeof(len) == sizeof(unsigned int)
+   	
         return (len < ZIP_BIG_PREVLEN) ? 1 : sizeof(len)+1;
     } else {
         if (len < ZIP_BIG_PREVLEN) {
@@ -479,11 +483,12 @@ unsigned int zipRawEntryLength(unsigned char *p) {
  * Stores the integer value in 'v' and its encoding in 'encoding'. */
 int zipTryEncoding(unsigned char *entry, unsigned int entrylen, long long *v, unsigned char *encoding) {
     long long value;
-
+	// 如果大于32个字符，那么编码不了
     if (entrylen >= 32 || entrylen == 0) return 0;
     if (string2ll((char*)entry,entrylen,&value)) {
         /* Great, the string can be encoded. Check what's the smallest
          * of our encoding types that can hold this value. */
+        // 值大于0小于12
         if (value >= 0 && value <= 12) {
             *encoding = ZIP_INT_IMM_MIN+value;
         } else if (value >= INT8_MIN && value <= INT8_MAX) {
@@ -578,9 +583,13 @@ void zipEntry(unsigned char *p, zlentry *e) {
 unsigned char *ziplistNew(void) {
     unsigned int bytes = ZIPLIST_HEADER_SIZE+1;
     unsigned char *zl = zmalloc(bytes);
+    // 写入当前字节数
     ZIPLIST_BYTES(zl) = intrev32ifbe(bytes);
+    // 写入最后一个节点的偏移量
     ZIPLIST_TAIL_OFFSET(zl) = intrev32ifbe(ZIPLIST_HEADER_SIZE);
+    // 写入当前节点个数为0
     ZIPLIST_LENGTH(zl) = 0;
+    // 0xff
     zl[bytes-1] = ZIP_END;
     return zl;
 }

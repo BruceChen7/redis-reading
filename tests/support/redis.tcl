@@ -40,10 +40,15 @@ array set ::redis::state {} ;# State in non-blocking reply reading
 array set ::redis::statestack {} ;# Stack of states, for nested mbulks
 
 proc redis {{server 127.0.0.1} {port 6379} {defer 0}} {
+    # 获取连接
     set fd [socket $server $port]
+    # 设置成二进制安全协议
     fconfigure $fd -translation binary
+    # 增加redis实例
     set id [incr ::redis::id]
+    # 设置当前连接的fd列表
     set ::redis::fd($id) $fd
+    #设置连接的端口好
     set ::redis::addr($id) [list $server $port]
     set ::redis::blocking($id) 1
     set ::redis::deferred($id) $defer
