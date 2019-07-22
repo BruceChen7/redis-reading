@@ -5,7 +5,9 @@ set ::num_skipped 0
 set ::num_aborted 0
 set ::tests_failed {}
 
+# 单元测试框架的实现
 proc fail {msg} {
+    # 产生一个错误
     error "assertion:$msg"
 }
 
@@ -69,6 +71,7 @@ proc wait_for_condition {maxtries delay e _else_ elsescript} {
 proc test {name code {okpattern undefined}} {
     # abort if tagged with a tag to deny
     foreach tag $::denytags {
+        # lsearch 从一个tags匹配到tag
         if {[lsearch $::tags $tag] >= 0} {
             incr ::num_aborted
             send_data_packet $::test_server_fd ignore $name

@@ -11,6 +11,7 @@ source tests/support/tmpfile.tcl
 source tests/support/test.tcl
 source tests/support/util.tcl
 
+## 在all_tests是一个全局变量
 set ::all_tests {
     unit/printver
     unit/dump
@@ -103,6 +104,7 @@ set ::numclients 16
 proc execute_tests name {
     set path "tests/$name.tcl"
     set ::curfile $path
+    # 加载tcl文件
     source $path
     send_data_packet $::test_server_fd done "$name"
 }
@@ -142,8 +144,11 @@ proc reconnect {args} {
     }
 
     set srv [lindex $::servers end+$level]
+    # 获取主机
     set host [dict get $srv "host"]
+    # 获取port
     set port [dict get $srv "port"]
+    # config的配置
     set config [dict get $srv "config"]
     set client [redis $host $port]
     dict set srv "client" $client
@@ -407,6 +412,7 @@ proc the_end {} {
 
 # The client is not even driven (the test server is instead) as we just need
 # to read the command, execute, reply... all this in a loop.
+# test_client_main 测试客户端的功能。
 proc test_client_main server_port {
     set ::test_server_fd [socket localhost $server_port]
     fconfigure $::test_server_fd -encoding binary
@@ -625,12 +631,15 @@ proc close_replication_stream {s} {
 # If the computer is too slow we revert the sequential test without any
 # parallelism, that is, clients == 1.
 proc is_a_slow_computer {} {
+    # start 为当前的毫秒数
     set start [clock milliseconds]
     for {set j 0} {$j < 1000000} {incr j} {}
     set elapsed [expr [clock milliseconds]-$start]
+    ## 大于200毫米为慢电脑
     expr {$elapsed > 200}
 }
 
+# 测试客户端的程序
 if {$::client} {
     if {[catch { test_client_main $::test_server_port } err]} {
         set estr "Executing test client: $err.\n$::errorInfo"

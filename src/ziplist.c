@@ -202,13 +202,13 @@
 #define ZIP_STR_MASK 0xc0
 #define ZIP_INT_MASK 0x30
 #define ZIP_STR_06B (0 << 6)
-#define ZIP_STR_14B (1 << 6)
-#define ZIP_STR_32B (2 << 6)
-#define ZIP_INT_16B (0xc0 | 0<<4)
-#define ZIP_INT_32B (0xc0 | 1<<4)
-#define ZIP_INT_64B (0xc0 | 2<<4)
-#define ZIP_INT_24B (0xc0 | 3<<4)
-#define ZIP_INT_8B 0xfe
+#define ZIP_STR_14B (1 << 6)  0100 0000
+#define ZIP_STR_32B (2 << 6)  1000 0000
+#define ZIP_INT_16B (0xc0 | 0<<4)   // 1100 0000
+#define ZIP_INT_32B (0xc0 | 1<<4)	// 1101 0000
+#define ZIP_INT_64B (0xc0 | 2<<4)	// 1110 0000
+#define ZIP_INT_24B (0xc0 | 3<<4)   // 1111 0000
+#define ZIP_INT_8B 0xfe				// 1111 1110 
 
 /* 4 bit integer immediate encoding |1111xxxx| with xxxx between
  * 0001 and 1101. */
@@ -335,6 +335,7 @@ unsigned int zipStoreEntryEncoding(unsigned char *p, unsigned char encoding, uns
     if (ZIP_IS_STR(encoding)) {
         /* Although encoding is given it may not be set for strings,
          * so we determine it here using the raw length. */
+        // 采用大端字节序的存放方式
         if (rawlen <= 0x3f) {
        		//小于63个字节
             if (!p) return len;
@@ -342,12 +343,15 @@ unsigned int zipStoreEntryEncoding(unsigned char *p, unsigned char encoding, uns
         } else if (rawlen <= 0x3fff) { // 小于16383个字节
             len += 1;
             if (!p) return len;
+            // 存前4位
             buf[0] = ZIP_STR_14B | ((rawlen >> 8) & 0x3f);
+            // 存后8位
             buf[1] = rawlen & 0xff;
         } else {
             len += 4;  
             if (!p) return len;
             buf[0] = ZIP_STR_32B;
+            
             buf[1] = (rawlen >> 24) & 0xff;
             buf[2] = (rawlen >> 16) & 0xff;
             buf[3] = (rawlen >> 8) & 0xff;
@@ -410,7 +414,6 @@ unsigned int zipStorePrevEntryLength(unsigned char *p, unsigned int len) {
     if (p == NULL) {
    		// 如果小于254个char，那么返回1，这里的1表示一个字节
    		// sizeof(len) == sizeof(unsigned int)
-   	
         return (len < ZIP_BIG_PREVLEN) ? 1 : sizeof(len)+1;
     } else {
         if (len < ZIP_BIG_PREVLEN) {
@@ -481,6 +484,8 @@ unsigned int zipRawEntryLength(unsigned char *p) {
 
 /* Check if string pointed to by 'entry' can be encoded as an integer.
  * Stores the integer value in 'v' and its encoding in 'encoding'. */
+ // 像"1234"这种字符串，平常的存储需要4个字节
+ // 但是我们我们转成数字存，那么将少的多
 int zipTryEncoding(unsigned char *entry, unsigned int entrylen, long long *v, unsigned char *encoding) {
     long long value;
 	// 如果大于32个字符，那么编码不了
@@ -492,6 +497,7 @@ int zipTryEncoding(unsigned char *entry, unsigned int entrylen, long long *v, un
         if (value >= 0 && value <= 12) {
             *encoding = ZIP_INT_IMM_MIN+value;
         } else if (value >= INT8_MIN && value <= INT8_MAX) {
+        	// 设置编码格式
             *encoding = ZIP_INT_8B;
         } else if (value >= INT16_MIN && value <= INT16_MAX) {
             *encoding = ZIP_INT_16B;
@@ -750,6 +756,7 @@ unsigned char *__ziplistDelete(unsigned char *zl, unsigned char *p, unsigned int
 
 /* Insert item at "p". */
 unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsigned char *s, unsigned int slen) {
+    // 获取当前链表的大小
     size_t curlen = intrev32ifbe(ZIPLIST_BYTES(zl)), reqlen;
     unsigned int prevlensize, prevlen = 0;
     size_t offset;
@@ -770,9 +777,11 @@ unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsigned cha
         }
     }
 
+	// 对字符串尝试进行编码
     /* See if the entry can be encoded */
     if (zipTryEncoding(s,slen,&value,&encoding)) {
         /* 'encoding' is set to the appropriate integer encoding */
+        // reqlen表示获取int的大小
         reqlen = zipIntSize(encoding);
     } else {
         /* 'encoding' is untouched, however zipStoreEntryEncoding will use the
@@ -843,6 +852,7 @@ unsigned char *__ziplistInsert(unsigned char *zl, unsigned char *p, unsigned cha
     } else {
         zipSaveInteger(p,value,encoding);
     }
+    // 新加入一个节点
     ZIPLIST_INCR_LENGTH(zl,1);
     return zl;
 }
@@ -965,6 +975,7 @@ unsigned char *ziplistMerge(unsigned char **first, unsigned char **second) {
 unsigned char *ziplistPush(unsigned char *zl, unsigned char *s, unsigned int slen, int where) {
     unsigned char *p;
     p = (where == ZIPLIST_HEAD) ? ZIPLIST_ENTRY_HEAD(zl) : ZIPLIST_ENTRY_END(zl);
+    // p 表示插入的位置
     return __ziplistInsert(zl,p,s,slen);
 }
 

@@ -738,6 +738,7 @@ static int cliAuth(void) {
     if (config.auth == NULL) return REDIS_OK;
 	// 发送AUTH命令
     reply = redisCommand(context,"AUTH %s",config.auth);
+    // 如果会不为空
     if (reply != NULL) {
         freeReplyObject(reply);
         return REDIS_OK;

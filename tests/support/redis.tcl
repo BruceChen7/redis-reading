@@ -48,7 +48,7 @@ proc redis {{server 127.0.0.1} {port 6379} {defer 0}} {
     set id [incr ::redis::id]
     # 设置当前连接的fd列表
     set ::redis::fd($id) $fd
-    #设置连接的端口好
+    #设置连接的端口号
     set ::redis::addr($id) [list $server $port]
     set ::redis::blocking($id) 1
     set ::redis::deferred($id) $defer

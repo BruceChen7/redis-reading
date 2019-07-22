@@ -193,6 +193,7 @@ static void moveToNextTask(redisReader *r) {
     redisReadTask *cur, *prv;
     while (r->ridx >= 0) {
         /* Return a.s.a.p. when the stack is now empty. */
+        // 如果已经时栈顶了，那么直接返回
         if (r->ridx == 0) {
             r->ridx--;
             return;
@@ -201,9 +202,10 @@ static void moveToNextTask(redisReader *r) {
         cur = &(r->rstack[r->ridx]);
         prv = &(r->rstack[r->ridx-1]);
         assert(prv->type == REDIS_REPLY_ARRAY);
-		// 当前任务是父节点记录的子任务数
+		// 当前任务是父节点记录的子任务数的最后一个
 		// 那么下次应该处理父节点，也就是父任务
         if (cur->idx == prv->elements-1) {
+        	// 该层的read task结束了
             r->ridx--;
         } else {
             /* Reset the type because the next item can be anything */
@@ -222,7 +224,7 @@ static int processLineItem(redisReader *r) {
     void *obj;
     char *p;
     int len;
-	// 读取一行后
+	// 从缓冲区读取一行后
     if ((p = readLine(r,&len)) != NULL) {
         if (cur->type == REDIS_REPLY_INTEGER) {
             if (r->fn && r->fn->createInteger)
@@ -244,7 +246,9 @@ static int processLineItem(redisReader *r) {
         }
 
         /* Set reply if this is the root object. */
+        // 如果是根任务，那么设置当前的返回对象为响应
         if (r->ridx == 0) r->reply = obj;
+        // 处理下一个栈任务
         moveToNextTask(r);
         return REDIS_OK;
     }
@@ -253,14 +257,16 @@ static int processLineItem(redisReader *r) {
 }
 		
 static int processBulkItem(redisReader *r) {
+    // 获取当前读的readTask
     redisReadTask *cur = &(r->rstack[r->ridx]);
     void *obj = NULL;
     char *p, *s;
     long len;
     unsigned long bytelen;
     int success = 0;
-
+	// 之前读到的位置
     p = r->buf+r->pos;
+    // 读到一行
     s = seekNewline(p,r->len-r->pos);
     if (s != NULL) {
         p = r->buf+r->pos;
@@ -301,7 +307,7 @@ static int processBulkItem(redisReader *r) {
             return REDIS_OK;
         }
     }
-
+	// 没有读到一行
     return REDIS_ERR;
 }
 
@@ -324,7 +330,7 @@ static int processMultiBulkItem(redisReader *r) {
     	// 这里elements为3
         elements = readLongLong(p);
         root = (r->ridx == 0);
-
+		// 后续的响应为空
         if (elements == -1) {
             if (r->fn && r->fn->createNil)
                 obj = r->fn->createNil(cur);
@@ -358,11 +364,11 @@ static int processMultiBulkItem(redisReader *r) {
                 r->rstack[r->ridx].elements = -1;
                 // 子层处理的reply编号从0开始
                 r->rstack[r->ridx].idx = 0;
-                // 子层处理的回复对象现在是空
+                // 子层处理的回复对象reply现在是空
                 r->rstack[r->ridx].obj = NULL;
                 // 设置父层
                 r->rstack[r->ridx].parent = cur;
-                // 设置是由数据
+                // 设置是私有数据
                 r->rstack[r->ridx].privdata = r->privdata;
             } else {
                 moveToNextTask(r);
@@ -388,20 +394,20 @@ static int processItem(redisReader *r) {
         if ((p = readBytes(r,1)) != NULL) {
             switch (p[0]) {
             case '-':
-            	// 回复协议错误
+            	// 响应协议错误
                 cur->type = REDIS_REPLY_ERROR;
                 break;
-            case '+': // 回复状态
+            case '+': // 响应是状态
                 cur->type = REDIS_REPLY_STATUS;
                 break;
             case ':':
-            	// 是整数
+            	// 响应是是整数
                 cur->type = REDIS_REPLY_INTEGER;
                 break;
-            case '$': // 是字符串
+            case '$': // 响应是字符串
                 cur->type = REDIS_REPLY_STRING;
                 break;
-            case '*':
+            case '*': // 响应是数组
                 cur->type = REDIS_REPLY_ARRAY;
                 break;
             default:
@@ -519,6 +525,7 @@ int redisReaderGetReply(redisReader *r, void **reply) {
     }
 
     /* Process items in reply. */
+    // 处理的栈不是栈顶
     while (r->ridx >= 0)
         if (processItem(r) != REDIS_OK)
             break;
@@ -538,7 +545,9 @@ int redisReaderGetReply(redisReader *r, void **reply) {
     /* Emit a reply when there is one. */
     if (r->ridx == -1) {
         if (reply != NULL)
+        	// 如果有响应，那么设置
             *reply = r->reply;
+        // 恢复为空
         r->reply = NULL;
     }
     return REDIS_OK;

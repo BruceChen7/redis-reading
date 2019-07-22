@@ -118,9 +118,11 @@ proc log_crashes {} {
 proc cleanup {} {
     puts "Cleaning up..."
     log_crashes
+    # 直接杀掉进程
     foreach pid $::pids {
         catch {exec kill -9 $pid}
     }
+    ##清除目录
     foreach dir $::dirs {
         catch {exec rm -rf $dir}
     }

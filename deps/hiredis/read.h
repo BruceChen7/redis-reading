@@ -84,7 +84,7 @@ typedef struct redisReplyObjectFunctions {
 typedef struct redisReader {
     int err; /* Error flags, 0 when there is no error */
     char errstr[128]; /* String representation of error when applicable */
-	// 用来表示读取redis服务器的buffer
+	// 用来表示读取fd的buffer
     char *buf; /* Read buffer */
     size_t pos; /* Buffer cursor */
     size_t len; /* Buffer length */

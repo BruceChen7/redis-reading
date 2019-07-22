@@ -150,10 +150,13 @@ static void *createArrayObject(const redisReadTask *task, int elements) {
     }
 	// 容量
     r->elements = elements;
-	// 这里指得是？？？
+	// 如果这个不是根任务
     if (task->parent) {
+    	// 获取父read task
         parent = task->parent->obj;
+        // 根任务一定是ARRAY类型
         assert(parent->type == REDIS_REPLY_ARRAY);
+        // 设置父节点对应于idx号的子任务的reply为r
         parent->element[task->idx] = r;
     }
     return r;
@@ -867,7 +870,7 @@ int redisBufferWrite(redisContext *c, int *done) {
     /* Return early when the context has seen an error. */
     if (c->err)
         return REDIS_ERR;
-
+	// 有需要写的数据
     if (sdslen(c->obuf) > 0) {
         nwritten = write(c->fd,c->obuf,sdslen(c->obuf));
         if (nwritten == -1) {
@@ -890,7 +893,7 @@ int redisBufferWrite(redisContext *c, int *done) {
             }
         }
     }
-	// 只有写满了done才为1
+	// 只有c->obuf没有数据才表示写完了
     if (done != NULL) *done = (sdslen(c->obuf) == 0);
     return REDIS_OK;
 }

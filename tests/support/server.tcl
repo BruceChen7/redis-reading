@@ -30,6 +30,7 @@ proc kill_server config {
 
     # nevermind if its already dead
     if {![is_alive $config]} { return }
+    # dict get 获取pid的配置
     set pid [dict get $config pid]
 
     # check for leaks
@@ -118,12 +119,16 @@ proc ping_server {host port} {
 # returns 0. Performs a try every 50 milliseconds for the specified number
 # of retries.
 proc server_is_up {host port retrynum} {
+    # 等待10ms
     after 10 ;# Use a small delay to make likely a first-try success.
     set retval 0
+
+
     while {[incr retrynum -1]} {
         if {[catch {ping_server $host $port} ping]} {
             set ping 0
         }
+        # ping通了
         if {$ping} {return 1}
         after 50
     }
