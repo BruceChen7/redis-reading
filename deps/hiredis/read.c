@@ -485,12 +485,13 @@ int redisReaderFeed(redisReader *r, const char *buf, size_t len) {
             assert(r->buf != NULL);
         }
 
+        // copy到newbuf中
         newbuf = sdscatlen(r->buf,buf,len);
         if (newbuf == NULL) {
             __redisReaderSetErrorOOM(r);
             return REDIS_ERR;
         }
-		// 获取读取的字节流
+		// 获取读取的字节流放到context中
         r->buf = newbuf;
         r->len = sdslen(r->buf);
     }

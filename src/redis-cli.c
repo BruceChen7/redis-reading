@@ -751,6 +751,7 @@ static int cliSelect(void) {
     redisReply *reply;
     if (config.dbnum == 0) return REDIS_OK;
 
+    // 直接调用select db号
     reply = redisCommand(context,"SELECT %d",config.dbnum);
     if (reply != NULL) {
         int result = REDIS_OK;
@@ -803,6 +804,7 @@ static int cliConnect(int flags) {
         /* Do AUTH and select the right DB. */
         if (cliAuth() != REDIS_OK) //验证用户名和密码
             return REDIS_ERR;
+        // 选择db
         if (cliSelect() != REDIS_OK)
             return REDIS_ERR;
     }

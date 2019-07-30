@@ -63,8 +63,10 @@
 
 static pthread_t bio_threads[BIO_NUM_OPS];
 static pthread_mutex_t bio_mutex[BIO_NUM_OPS];
+// 这里是添加了新的job的条件变量
 static pthread_cond_t bio_newjob_cond[BIO_NUM_OPS];
 static pthread_cond_t bio_step_cond[BIO_NUM_OPS];
+// 全局list链表
 static list *bio_jobs[BIO_NUM_OPS];
 /* The following array is used to hold the number of pending jobs for every
  * OP type. This allows us to export the bioPendingJobsOfType() API that is
@@ -90,6 +92,7 @@ void lazyfreeFreeSlotsMapFromBioThread(zskiplist *sl);
 
 /* Make sure we have enough stack to perform all the things we do in the
  * main thread. */
+// 4KB
 #define REDIS_THREAD_STACK_SIZE (1024*1024*4)
 
 /* Initialize the background system, spawning the thread. */
@@ -112,7 +115,9 @@ void bioInit(void) {
     pthread_attr_init(&attr);
     pthread_attr_getstacksize(&attr,&stacksize);
     if (!stacksize) stacksize = 1; /* The world is full of Solaris Fixes */
+    // 至少4KB
     while (stacksize < REDIS_THREAD_STACK_SIZE) stacksize *= 2;
+    // 设置线程的栈大小
     pthread_attr_setstacksize(&attr, stacksize);
 
     /* Ready to spawn our threads. We use the single argument the thread
@@ -146,6 +151,7 @@ void bioCreateBackgroundJob(int type, void *arg1, void *arg2, void *arg3) {
 
 void *bioProcessBackgroundJobs(void *arg) {
     struct bio_job *job;
+    // 3个background线程，对应不同的类型
     unsigned long type = (unsigned long) arg;
     sigset_t sigset;
 
@@ -159,7 +165,7 @@ void *bioProcessBackgroundJobs(void *arg) {
     /* Make the thread killable at any time, so that bioKillThreads()
      * can work reliably. */
     // 线程任何时间都可以杀掉
-    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL); 
+    pthread_setcancelstate(PTHREAD_CANCEL_ENABLE, NULL);
     pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
 
     pthread_mutex_lock(&bio_mutex[type]);
@@ -167,6 +173,9 @@ void *bioProcessBackgroundJobs(void *arg) {
      * receive the watchdog signal. */
     sigemptyset(&sigset);
     sigaddset(&sigset, SIGALRM);
+
+    // 阻塞SIGALRM信号
+    // 用于多线程中的信号处理函数
     if (pthread_sigmask(SIG_BLOCK, &sigset, NULL))
         serverLog(LL_WARNING,
             "Warning: can't mask SIGALRM in bio.c thread: %s", strerror(errno));
@@ -181,11 +190,11 @@ void *bioProcessBackgroundJobs(void *arg) {
         }
         /* Pop the job from the queue. */
         ln = listFirst(bio_jobs[type]);
-        job = ln->value; // 
+        job = ln->value; //
         /* It is now possible to unlock the background system as we know have
          * a stand alone job structure to process.*/
         pthread_mutex_unlock(&bio_mutex[type]);
-	
+
 
         /* Process the job accordingly to its type. */
         if (type == BIO_CLOSE_FILE) {

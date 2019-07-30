@@ -828,25 +828,31 @@ int redisEnableKeepAlive(redisContext *c) {
  * After this function is called, you may use redisContextReadReply to
  * see if there is a reply available. */
 int redisBufferRead(redisContext *c) {
+    // 4 KB
     char buf[1024*16];
     int nread;
 
+    // 如果之前有错误，直接返回
     /* Return early when the context has seen an error. */
     if (c->err)
         return REDIS_ERR;
 
+    // 从文件描述符中读
     nread = read(c->fd,buf,sizeof(buf));
     if (nread == -1) {
+        // 对于阻塞模式是EINTR是信号中断的，那么会重试
+        // 阻塞模式是EAGAIN
         if ((errno == EAGAIN && !(c->flags & REDIS_BLOCK)) || (errno == EINTR)) {
             /* Try again later */
         } else {
             __redisSetError(c,REDIS_ERR_IO,NULL);
             return REDIS_ERR;
         }
-    } else if (nread == 0) {
+    } else if (nread == 0) { // 对端关闭连接
         __redisSetError(c,REDIS_ERR_EOF,"Server closed the connection");
         return REDIS_ERR;
     } else {
+        // 这次独立4KB数据，那么就开始feed reader
         if (redisReaderFeed(c->reader,buf,nread) != REDIS_OK) {
             __redisSetError(c,c->reader->err,c->reader->errstr);
             return REDIS_ERR;
@@ -914,9 +920,12 @@ int redisGetReply(redisContext *c, void **reply) {
 
     /* Try to read pending replies */
     // 先读之前并没有读完的
+    // 如果这次读完整了
     if (redisGetReplyFromReader(c,&aux) == REDIS_ERR)
         return REDIS_ERR;
 
+    // 如果之前并没有剩下什么数据读完，那么就先发布数据
+    // 然后在一直读
     /* For the blocking context, flush output buffer and read reply */
     if (aux == NULL && c->flags & REDIS_BLOCK) {
 		// 一直写
@@ -932,6 +941,8 @@ int redisGetReply(redisContext *c, void **reply) {
         	//
             if (redisBufferRead(c) == REDIS_ERR)
                 return REDIS_ERR;
+
+            // 开始解析响应
             if (redisGetReplyFromReader(c,&aux) == REDIS_ERR)
                 return REDIS_ERR;
         } while (aux == NULL);
@@ -1044,7 +1055,7 @@ static void *__redisBlockForReply(redisContext *c) {
     return NULL;
 }
 
-//直接将序列化后的命令发送给服务器
+// 直接将序列化后的命令发送给服务器
 void *redisvCommand(redisContext *c, const char *format, va_list ap) {
     if (redisvAppendCommand(c,format,ap) != REDIS_OK)
         return NULL;
@@ -1056,6 +1067,8 @@ void *redisCommand(redisContext *c, const char *format, ...) {
     va_list ap;
     void *reply = NULL;
     va_start(ap,format);
+    // 直接格式化命令
+    // 并获取响应
     reply = redisvCommand(c,format,ap);
     va_end(ap);
     return reply;
