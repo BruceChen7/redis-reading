@@ -2,6 +2,7 @@
 TCL_VERSIONS="8.5 8.6"
 TCLSH=""
 
+# 遍历版本号，这种for in的方式还是第一次看见
 for VERSION in $TCL_VERSIONS; do
 	TCL=`which tclsh$VERSION 2>/dev/null` && TCLSH=$TCL
 done
@@ -11,4 +12,5 @@ then
     echo "You need tcl 8.5 or newer in order to run the Redis test"
     exit 1
 fi
+# $@为用户在命令行输入的所有参数
 $TCLSH tests/test_helper.tcl "${@}"

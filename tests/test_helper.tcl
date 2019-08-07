@@ -12,6 +12,7 @@ source tests/support/test.tcl
 source tests/support/util.tcl
 
 ## 在all_tests是一个全局变量
+## 是一个list
 set ::all_tests {
     unit/printver
     unit/dump
@@ -67,6 +68,8 @@ set ::all_tests {
 # Index to the next test to run in the ::all_tests list.
 set ::next_test 0
 
+# ::都是全局的名字空间
+# 直接设置全局变量
 set ::host 127.0.0.1
 set ::port 21111
 set ::traceleaks 0
@@ -106,6 +109,7 @@ proc execute_tests name {
     set ::curfile $path
     # 加载tcl文件
     source $path
+    # 给测试server发包
     send_data_packet $::test_server_fd done "$name"
 }
 
@@ -194,27 +198,42 @@ proc cleanup {} {
     }
     if {!$::quiet} {puts -nonewline "Cleanup: may take some time... "}
     flush stdout
+    # {*}[glob xxx] 表示就是一个使用glob的结果，返回一个字符串
+    # Essentially, {*}$res will split the string into its whitespace-separated words
+    # https://stackoverflow.com/questions/5124185/what-does-do-in-tcl
     catch {exec rm -rf {*}[glob tests/tmp/redis.conf.*]}
     catch {exec rm -rf {*}[glob tests/tmp/server.*]}
     if {!$::quiet} {puts "OK"}
 }
 
 proc test_server_main {} {
+    # 清除临时配置
     cleanup
     set tclsh [info nameofexecutable]
+    # 输出tclsh /usr/bin/tclsh8.5
+    puts ", tclsh $tclsh"
+
     # Open a listening socket, trying different ports in order to find a
     # non busy one.
     set port [find_available_port 11111]
     if {!$::quiet} {
         puts "Starting test server at port $port"
     }
+    # 启动服务器，监听127.0.0.1
     socket -server accept_test_clients -myaddr 127.0.0.1 $port
 
     # Start the client instances
     set ::clients_pids {}
     set start_port [expr {$::port+100}]
+    # 没有特别指定，默认是16个客户端
     for {set j 0} {$j < $::numclients} {incr j} {
+        # 给每个客户端分配启动端口号
         set start_port [find_available_port $start_port]
+        set res [info script] {*}$::argv
+        # 输出 tests/test_helper.tcl
+        puts " res $res "
+
+        # exec invoke子进程
         set p [exec $tclsh [info script] {*}$::argv \
             --client $port --port $start_port &]
         lappend ::clients_pids $p
@@ -224,13 +243,16 @@ proc test_server_main {} {
     # Setup global state for the test server
     set ::idle_clients {}
     set ::active_clients {}
+    # 设置dict类型
     array set ::active_clients_task {}
     array set ::clients_start_time {}
     set ::clients_time_history {}
     set ::failed_tests {}
 
     # Enter the event loop to handle clients I/O
+    # 100ms后，test_server_cron
     after 100 test_server_cron
+    #vwait一直等待，直到某个变量被写
     vwait forever
 }
 
@@ -460,9 +482,14 @@ proc print_help_screen {} {
 }
 
 # parse arguments
+# 变量参数
 for {set j 0} {$j < [llength $argv]} {incr j} {
+    # 访问列表中的选项
     set opt [lindex $argv $j]
+    # 获取形参
     set arg [lindex $argv [expr $j+1]]
+    # 如果为--tags
+    # 字符串比较比较
     if {$opt eq {--tags}} {
         foreach tag $arg {
             if {[string index $tag 0] eq "-"} {
@@ -490,12 +517,14 @@ for {set j 0} {$j < [llength $argv]} {incr j} {
             set ::stack_logging 1
         }
     } elseif {$opt eq {--quiet}} {
+        # 设置no debug
         set ::quiet 1
     } elseif {$opt eq {--host}} {
         set ::external 1
         set ::host $arg
         incr j
     } elseif {$opt eq {--port}} {
+        # 设置端口号
         set ::port $arg
         incr j
     } elseif {$opt eq {--accurate}} {
@@ -503,6 +532,7 @@ for {set j 0} {$j < [llength $argv]} {incr j} {
     } elseif {$opt eq {--force-failure}} {
         set ::force_failure 1
     } elseif {$opt eq {--single}} {
+        # 添加到测试的链表
         lappend ::single_tests $arg
         incr j
     } elseif {$opt eq {--only}} {
@@ -536,7 +566,9 @@ for {set j 0} {$j < [llength $argv]} {incr j} {
     } elseif {$opt eq {--timeout}} {
         set ::timeout $arg
         incr j
-    } elseif {$opt eq {--help}} {
+    # 这种也是可以的
+    } elseif {$opt == "--help"} {
+        puts "test --help"
         print_help_screen
         exit 0
     } else {
@@ -566,6 +598,7 @@ if {$::skip_till != ""} {
 # Override the list of tests with the specific tests we want to run
 # in case there was some filter, that is --single or --skip-till options.
 if {[llength $::single_tests] > 0} {
+    # 只测试用户指定测试的选项
     set ::all_tests $::single_tests
 }
 
@@ -633,16 +666,21 @@ proc close_replication_stream {s} {
 proc is_a_slow_computer {} {
     # start 为当前的毫秒数
     set start [clock milliseconds]
+    # 很典型的for 循环
     for {set j 0} {$j < 1000000} {incr j} {}
+    # clock milliseconds 获取当前时间戳，精度为毫秒
     set elapsed [expr [clock milliseconds]-$start]
     ## 大于200毫米为慢电脑
     expr {$elapsed > 200}
 }
 
+# 如果直接通过./runtest启动，那么$::client是没有设置的
+# 直接转到else分支
 # 测试客户端的程序
 if {$::client} {
     if {[catch { test_client_main $::test_server_port } err]} {
         set estr "Executing test client: $err.\n$::errorInfo"
+        puts $estr
         if {[catch {send_data_packet $::test_server_fd exception $estr}]} {
             puts $estr
         }
@@ -655,6 +693,7 @@ if {$::client} {
     }
 
     if {[catch { test_server_main } err]} {
+        # 有错误信息
         if {[string length $err] > 0} {
             # only display error when not generated by the test suite
             if {$err ne "exception"} {

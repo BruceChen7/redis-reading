@@ -6,6 +6,7 @@ for VERSION in $TCL_VERSIONS; do
 	TCL=`which tclsh$VERSION 2>/dev/null` && TCLSH=$TCL
 done
 
+## 如果tcl版本不对直接退出
 if [ -z $TCLSH ]
 then
     echo "You need tcl 8.5 or newer in order to run the Redis Sentinel test"

@@ -317,8 +317,10 @@ proc roundFloat f {
     format "%.10g" $f
 }
 
+# 获取端口号
 proc find_available_port start {
     for {set j $start} {$j < $start+1024} {incr j} {
+        # 直接创建socket，并返回文件描述符
         if {[catch {set fd1 [socket 127.0.0.1 $j]}] &&
             [catch {set fd2 [socket 127.0.0.1 [expr $j+10000]]}]} {
             return $j

@@ -239,6 +239,8 @@ distclean: clean
 .PHONY: distclean
 
 test: $(REDIS_SERVER_NAME) $(REDIS_CHECK_AOF_NAME)
+	# make test
+	# 直接执行runtest脚本
 	@(cd ..; ./runtest)
 
 test-sentinel: $(REDIS_SENTINEL_NAME)
