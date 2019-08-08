@@ -298,7 +298,7 @@ int redisvFormatCommand(char **target, const char *format, va_list ap) {
                     size_t _l = 0;
                     va_list _cpy;
 
-                    /* Flags */ 
+                    /* Flags */
                     // 忽略掉这些符号
                     while (*_p != '\0' && strchr(flags,*_p) != NULL) _p++;
 					// 忽略掉位宽
@@ -392,8 +392,8 @@ int redisvFormatCommand(char **target, const char *format, va_list ap) {
 
             touched = 1;
             c++;
-        } // end of else 
-        c++; // 
+        } // end of else
+        c++; //
     }
 
     /* Add the last argument if needed */
@@ -430,7 +430,7 @@ int redisvFormatCommand(char **target, const char *format, va_list ap) {
 	// *<参数数量>CRLF
 	// $参数1的字节数CRLF
 	// $参数2的字节数CRLF
-	
+
     pos = sprintf(cmd,"*%d\r\n",argc);
     for (j = 0; j < argc; j++) {
         pos += sprintf(cmd+pos,"$%zu\r\n",sdslen(curargv[j]));
@@ -852,7 +852,7 @@ int redisBufferRead(redisContext *c) {
         __redisSetError(c,REDIS_ERR_EOF,"Server closed the connection");
         return REDIS_ERR;
     } else {
-        // 这次独立4KB数据，那么就开始feed reader
+        // 正确的读取响应的字符串,就开始feed reader
         if (redisReaderFeed(c->reader,buf,nread) != REDIS_OK) {
             __redisSetError(c,c->reader->err,c->reader->errstr);
             return REDIS_ERR;
@@ -919,12 +919,11 @@ int redisGetReply(redisContext *c, void **reply) {
     void *aux = NULL;
 
     /* Try to read pending replies */
-    // 先读之前并没有读完的
-    // 如果这次读完整了
+    // 上来直接读取上次为读取的
     if (redisGetReplyFromReader(c,&aux) == REDIS_ERR)
         return REDIS_ERR;
 
-    // 如果之前并没有剩下什么数据读完，那么就先发布数据
+    // 如果之前并没有剩下什么数据读完，那么就先把命令发送给服务器
     // 然后在一直读
     /* For the blocking context, flush output buffer and read reply */
     if (aux == NULL && c->flags & REDIS_BLOCK) {
@@ -949,6 +948,7 @@ int redisGetReply(redisContext *c, void **reply) {
     }
 
     /* Set reply object */
+    // 将响应返回
     if (reply != NULL) *reply = aux;
     return REDIS_OK;
 }

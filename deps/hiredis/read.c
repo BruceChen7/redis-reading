@@ -469,6 +469,7 @@ void redisReaderFree(redisReader *r) {
 int redisReaderFeed(redisReader *r, const char *buf, size_t len) {
     sds newbuf;
 
+    // 直接出错
     /* Return early when this reader is in an erroneous state. */
     if (r->err)
         return REDIS_ERR;
