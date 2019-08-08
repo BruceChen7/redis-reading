@@ -10,6 +10,7 @@ proc tmpdir {basename} {
 }
 
 # return a filename unique to this process to write to
+# 获取对每个进程独一无二的文件
 proc tmpfile {basename} {
     file join $::tmproot $basename.[pid].[incr ::tmpcounter]
 }

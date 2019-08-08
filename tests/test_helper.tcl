@@ -109,7 +109,7 @@ proc execute_tests name {
     set ::curfile $path
     # 加载tcl文件
     source $path
-    # 给测试server发包
+    # 给测试server发包，表示某个测试用例已经完成
     send_data_packet $::test_server_fd done "$name"
 }
 
@@ -233,9 +233,11 @@ proc test_server_main {} {
         # 输出 tests/test_helper.tcl
         puts " res $res "
 
-        # exec invoke子进程
+        # exec 启动子进程
+        # 这里会重新 if {$::client} 这个分支
         set p [exec $tclsh [info script] {*}$::argv \
             --client $port --port $start_port &]
+        # 客户端的pid获记录
         lappend ::clients_pids $p
         incr start_port 10
     }
@@ -258,23 +260,32 @@ proc test_server_main {} {
 
 # This function gets called 10 times per second.
 proc test_server_cron {} {
+    # 获取当前的消耗的时间
     set elapsed [expr {[clock seconds]-$::last_progress}]
 
+    # 消耗的时间大于10分钟
     if {$elapsed > $::timeout} {
+        # 这个地方记录
         set err "\[[colorstr red TIMEOUT]\]: clients state report follows."
+        # 打印错误日志
         puts $err
+        # 添加错误
         lappend ::failed_tests $err
         show_clients_state
+        # 杀死客户端
         kill_clients
+        # 杀死服务器
         force_kill_all_servers
         the_end
     }
 
+    # 继续100ms开始
     after 100 test_server_cron
 }
 
 proc accept_test_clients {fd addr port} {
     fconfigure $fd -encoding binary
+    # 创建事件event handler
     fileevent $fd readable [list read_from_test_client $fd]
 }
 
@@ -294,11 +305,14 @@ proc accept_test_clients {fd addr port} {
 # done: all the specified test file was processed, this test client is
 #       ready to accept a new task.
 proc read_from_test_client fd {
+    # gets：从$fd中读取一行, 返回的应该是字节数
     set bytes [gets $fd]
     set payload [read $fd $bytes]
     foreach {status data} $payload break
     set ::last_progress [clock seconds]
 
+    # 如果测试客户端法国来的命令是ready
+    # 也就是连接上了测试服务器
     if {$status eq {ready}} {
         if {!$::quiet} {
             puts "\[$status\]: $data"
@@ -358,6 +372,7 @@ proc show_clients_state {} {
     # The following loop is only useful for debugging tests that may
     # enter an infinite loop. Commented out normally.
     foreach x $::active_clients {
+        # info exist 表示当前的变量是否存在
         if {[info exist ::active_clients_task($x)]} {
             puts "$x => $::active_clients_task($x)"
         } else {
@@ -368,6 +383,7 @@ proc show_clients_state {} {
 
 proc kill_clients {} {
     foreach p $::clients_pids {
+        # 直接杀死进程
         catch {exec kill $p}
     }
 }
@@ -391,12 +407,17 @@ proc signal_idle_client fd {
     # New unit to process?
     if {$::next_test != [llength $::all_tests]} {
         if {!$::quiet} {
+            # 打印日志
             puts [colorstr bold-white "Testing [lindex $::all_tests $::next_test]"]
             set ::active_clients_task($fd) "ASSIGNED: $fd ([lindex $::all_tests $::next_test])"
         }
+        # 设置每个客户端的启动时间
         set ::clients_start_time($fd) [clock seconds]
+        # 运行第n个测试用例
         send_data_packet $fd run [lindex $::all_tests $::next_test]
+        # 添加一个活动的连接
         lappend ::active_clients $fd
+        # 运行下一个测试用例
         incr ::next_test
         if {$::loop && $::next_test == [llength $::all_tests]} {
             set ::next_test 0
@@ -415,9 +436,12 @@ proc the_end {} {
     # TODO: print the status, exit with the rigth exit code.
     puts "\n                   The End\n"
     puts "Execution time of different units:"
+    # 打印各个测试用例的消耗的时间
     foreach {time name} $::clients_time_history {
         puts "  $time seconds - $name"
     }
+
+    # 打印失败的测试case
     if {[llength $::failed_tests]} {
         puts "\n[colorstr bold-red {!!! WARNING}] The following tests failed:\n"
         foreach failed $::failed_tests {
@@ -436,14 +460,21 @@ proc the_end {} {
 # to read the command, execute, reply... all this in a loop.
 # test_client_main 测试客户端的功能。
 proc test_client_main server_port {
+    # 连接服务器
     set ::test_server_fd [socket localhost $server_port]
+    # 设置这个fd为二进制协议
     fconfigure $::test_server_fd -encoding binary
+    # pid获取测试客户端的进程
     send_data_packet $::test_server_fd ready [pid]
     while 1 {
+        # 从文件描述符中读
         set bytes [gets $::test_server_fd]
+        # 设置payload
         set payload [read $::test_server_fd $bytes]
         foreach {cmd data} $payload break
+        # 客户端开始准备测试
         if {$cmd eq {run}} {
+            # 测试客户端开始启动server来进行测试
             execute_tests $data
         } else {
             error "Unknown test client command: $cmd"
@@ -452,7 +483,9 @@ proc test_client_main server_port {
 }
 
 proc send_data_packet {fd status data} {
+    # 直接设置list
     set payload [list $status $data]
+    # 先写入character字符串
     puts $fd [string length $payload]
     puts -nonewline $fd $payload
     flush $fd

@@ -142,9 +142,11 @@ proc tags {tags code} {
     set ::tags [lrange $::tags 0 end-[llength $tags]]
 }
 
+# 启动server来运行命令
 proc start_server {options {code undefined}} {
     # If we are running against an external server, we just push the
     # host/port pair in the stack the first time
+    # 如果是定义的外部的sever
     if {$::external} {
         if {[llength $::servers] == 0} {
             set srv {}
@@ -181,22 +183,29 @@ proc start_server {options {code undefined}} {
         }
     }
 
+    # 加载测试配置
     set data [split [exec cat "tests/assets/$baseconfig"] "\n"]
     set config {}
     foreach line $data {
+        # 忽略掉注释
         if {[string length $line] > 0 && [string index $line 0] ne "#"} {
             set elements [split $line " "]
+            # 获取字典
             set directive [lrange $elements 0 0]
+            # 获取形参
             set arguments [lrange $elements 1 end]
+            # 设置指令字典
             dict set config $directive $arguments
         }
     }
 
     # use a different directory every time a server is started
+    # 设置server目录
     dict set config dir [tmpdir server]
 
     # start every server on a different port
     set ::port [find_available_port [expr {$::port+1}]]
+    # 设置端口号
     dict set config port $::port
 
     # apply overrides from global space and arguments
@@ -205,8 +214,11 @@ proc start_server {options {code undefined}} {
     }
 
     # write new configuration to temporary file
+    # tmpfile是一个proc，将产生对每个服务器独一无二的配置文件
     set config_file [tmpfile redis.conf]
+    # 打开文件
     set fp [open $config_file w+]
+    # 将每个配置都写到响应的配置中
     foreach directive [dict keys $config] {
         puts -nonewline $fp "$directive "
         puts $fp [dict get $config $directive]
@@ -221,6 +233,7 @@ proc start_server {options {code undefined}} {
     } elseif ($::stack_logging) {
         set pid [exec /usr/bin/env MallocStackLogging=1 MallocLogFile=/tmp/malloc_log.txt src/redis-server $config_file > $stdout 2> $stderr &]
     } else {
+        # 新建redis-server
         set pid [exec src/redis-server $config_file > $stdout 2> $stderr &]
     }
 
@@ -265,6 +278,7 @@ proc start_server {options {code undefined}} {
     if {[dict exists $config port]} { set port [dict get $config port] }
 
     # setup config dict
+    # 设置服务器配置
     dict set srv "config_file" $config_file
     dict set srv "config" $config
     dict set srv "pid" $pid
@@ -332,6 +346,7 @@ proc start_server {options {code undefined}} {
         set ::servers [lrange $::servers 0 end-1]
 
         set ::tags [lrange $::tags 0 end-[llength $tags]]
+        # 杀死server
         kill_server $srv
     } else {
         set ::tags [lrange $::tags 0 end-[llength $tags]]
