@@ -559,6 +559,7 @@ int compareStringObjectsWithFlags(robj *a, robj *b, int flags) {
 
 /* Wrapper for compareStringObjectsWithFlags() using binary comparison. */
 int compareStringObjects(robj *a, robj *b) {
+    // 二进制字符串是否相等
     return compareStringObjectsWithFlags(a,b,REDIS_COMPARE_BINARY);
 }
 
@@ -572,10 +573,12 @@ int collateStringObjects(robj *a, robj *b) {
  * this function is faster then checking for (compareStringObject(a,b) == 0)
  * because it can perform some more optimization. */
 int equalStringObjects(robj *a, robj *b) {
+    // 是否是数字型字符串
     if (a->encoding == OBJ_ENCODING_INT &&
         b->encoding == OBJ_ENCODING_INT){
         /* If both strings are integer encoded just check if the stored
          * long is the same. */
+        // 地址是否相等
         return a->ptr == b->ptr;
     } else {
         return compareStringObjects(a,b) == 0;

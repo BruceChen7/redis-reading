@@ -1423,6 +1423,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
     /* Write the AOF buffer on disk */
     flushAppendOnlyFile(0);
 
+    // 在epoll之前来处理没有写完的socket
     /* Handle writes with pending output buffers. */
     handleClientsWithPendingWrites();
 

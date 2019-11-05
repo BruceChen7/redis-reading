@@ -132,11 +132,11 @@ void aeDeleteEventLoop(aeEventLoop *eventLoop) {
     zfree(eventLoop->fired);
     zfree(eventLoop);
 }
-// 
+//
 void aeStop(aeEventLoop *eventLoop) {
     eventLoop->stop = 1;
 }
-// 
+//
 int aeCreateFileEvent(aeEventLoop *eventLoop, int fd, int mask,
         aeFileProc *proc, void *clientData)
 {
@@ -359,7 +359,7 @@ static int processTimeEvents(aeEventLoop *eventLoop) {
  * the events that's possible to process without to wait are processed.
  *
  * The function returns the number of events processed. */
- // 返回处理事件
+ // 返回这次处理事件
 int aeProcessEvents(aeEventLoop *eventLoop, int flags)
 {
     int processed = 0, numevents;
@@ -413,8 +413,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
                 tvp = &tv;
             } else {
                 /* Otherwise we can block */
-			   
-                tvp = NULL; /* wait forever */ 
+                tvp = NULL; /* wait forever */
             }
         }
 
@@ -432,7 +431,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
 		 *  但是这里有一个invert的概念，是会先处理写事件，然后在读（不会在同一个回调中执行）。
 		 *  https://github.com/antirez/redis/commit/548e478e4092e8a17faf638d84bb6e05d155f72b
 		 *
-		 */ 
+		 */
         for (j = 0; j < numevents; j++) {
 			// 获取事件
             aeFileEvent *fe = &eventLoop->events[eventLoop->fired[j].fd];
@@ -446,7 +445,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
              * query.
              * 这里是说，通常我们会先读，然后立即写，
              * 然而在redis的场景中，需要先读，然后将记录同步到磁盘，而不是立即的写。
-             * 
+             *
              * However if AE_BARRIER is set in the mask, our application is
              * asking us to do the reverse: never fire the writable event
              * after the readable. In such a case, we invert the calls.
@@ -479,7 +478,7 @@ int aeProcessEvents(aeEventLoop *eventLoop, int flags)
             /* If we have to invert the call, fire the readable event now
              * after the writable one. */
             if (invert && fe->mask & mask & AE_READABLE) {
-				
+
                 if (!fired || fe->wfileProc != fe->rfileProc) {
                     fe->rfileProc(eventLoop,fd,fe->clientData,mask);
                     fired++;

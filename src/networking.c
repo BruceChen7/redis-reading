@@ -217,6 +217,7 @@ int prepareClientToWrite(client *c) {
          * a system call. We'll only really install the write handler if
          * we'll not be able to write the whole reply at once. */
         c->flags |= CLIENT_PENDING_WRITE;
+        // 将该客户端加入需要写socket的列表
         listAddNodeHead(server.clients_pending_write,c);
     }
 
@@ -248,6 +249,7 @@ int _addReplyToBuffer(client *c, const char *s, size_t len) {
 void _addReplyStringToList(client *c, const char *s, size_t len) {
     if (c->flags & CLIENT_CLOSE_AFTER_REPLY) return;
 
+    // 获取回复响应的最后一个
     listNode *ln = listLast(c->reply);
     clientReplyBlock *tail = ln? listNodeValue(ln): NULL;
 
@@ -266,18 +268,22 @@ void _addReplyStringToList(client *c, const char *s, size_t len) {
         s += copy;
         len -= copy;
     }
+    // 还有部分响应没有存储
     if (len) {
         /* Create a new node, make sure it is allocated to at
          * least PROTO_REPLY_CHUNK_BYTES */
         size_t size = len < PROTO_REPLY_CHUNK_BYTES? PROTO_REPLY_CHUNK_BYTES: len;
+        // 新增加一个节点
         tail = zmalloc(size + sizeof(clientReplyBlock));
         /* take over the allocation's internal fragmentation */
         tail->size = zmalloc_usable(tail) - sizeof(clientReplyBlock);
         tail->used = len;
         memcpy(tail->buf, s, len);
+        // 将该节点添加到响应list
         listAddNodeTail(c->reply, tail);
         c->reply_bytes += tail->size;
     }
+    // 过载保护
     asyncCloseClientOnOutputBufferLimitReached(c);
 }
 
@@ -288,20 +294,23 @@ void _addReplyStringToList(client *c, const char *s, size_t len) {
 
 /* Add the object 'obj' string representation to the client output buffer. */
 void addReply(client *c, robj *obj) {
-	// 如果不满足，直接返回
+    // 如有可能添加写事件到fd中
     if (prepareClientToWrite(c) != C_OK) return;
 
-	// encoding回复的对象
+	// 如果是字符串对象
     if (sdsEncodedObject(obj)) {
         if (_addReplyToBuffer(c,obj->ptr,sdslen(obj->ptr)) != C_OK)
             _addReplyStringToList(c,obj->ptr,sdslen(obj->ptr));
+        // 如果是INT对象
     } else if (obj->encoding == OBJ_ENCODING_INT) {
         /* For integer encoded strings we just convert it into a string
          * using our optimized function, and attach the resulting string
          * to the output buffer. */
         char buf[32];
         size_t len = ll2string(buf,sizeof(buf),(long)obj->ptr);
+        // 将栈buf，拷贝到客户端的缓冲区
         if (_addReplyToBuffer(c,buf,len) != C_OK)
+            // 拷贝到client的链表中，这是为什么呢？
             _addReplyStringToList(c,buf,len);
     } else {
         serverPanic("Wrong obj->encoding in addReply()");
@@ -645,6 +654,7 @@ void copyClientOutputBuffer(client *dst, client *src) {
 /* Return true if the specified client has pending reply buffers to write to
  * the socket. */
 int clientHasPendingReplies(client *c) {
+    // 当前的缓存区还有没有发送完毕的，或者是reply还有没有发完的
     return c->bufpos || listLength(c->reply);
 }
 
@@ -956,18 +966,21 @@ int writeToClient(int fd, client *c, int handler_installed) {
 
     while(clientHasPendingReplies(c)) {
         if (c->bufpos > 0) {
+            // 直接写入bufpost-sentlen字节
             nwritten = write(fd,c->buf+c->sentlen,c->bufpos-c->sentlen);
+            // 出错或者是没有可写，直接不进行处理
             if (nwritten <= 0) break;
             c->sentlen += nwritten;
             totwritten += nwritten;
 
             /* If the buffer was sent, set bufpos to zero to continue with
              * the remainder of the reply. */
+            // 这次已经全部发送完毕
             if ((int)c->sentlen == c->bufpos) {
                 c->bufpos = 0;
                 c->sentlen = 0;
             }
-        } else {
+        } else { // 以前没有写入任何数据，或者写入的数据都已经发送完毕
             o = listNodeValue(listFirst(c->reply));
             objlen = o->used;
 
@@ -1010,11 +1023,13 @@ int writeToClient(int fd, client *c, int handler_installed) {
              zmalloc_used_memory() < server.maxmemory) &&
             !(c->flags & CLIENT_SLAVE)) break;
     }
+    // 统计这个客户端网络字节数
     server.stat_net_output_bytes += totwritten;
     if (nwritten == -1) {
         if (errno == EAGAIN) {
             nwritten = 0;
         } else {
+            // 写入失败，直接关闭client
             serverLog(LL_VERBOSE,
                 "Error writing to client: %s", strerror(errno));
             freeClient(c);
@@ -1028,8 +1043,10 @@ int writeToClient(int fd, client *c, int handler_installed) {
          * We just rely on data / pings received for timeout detection. */
         if (!(c->flags & CLIENT_MASTER)) c->lastinteraction = server.unixtime;
     }
+    // 没有更多的数据要写
     if (!clientHasPendingReplies(c)) {
         c->sentlen = 0;
+        // 要删除写事件
         if (handler_installed) aeDeleteFileEvent(server.el,c->fd,AE_WRITABLE);
 
         /* Close connection after entire reply has been sent. */
@@ -1041,6 +1058,7 @@ int writeToClient(int fd, client *c, int handler_installed) {
     return C_OK;
 }
 
+// 当前fd添加写事件时，传入的回调
 /* Write event handler. Just send data to the client. */
 void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
     UNUSED(el);
@@ -1052,15 +1070,20 @@ void sendReplyToClient(aeEventLoop *el, int fd, void *privdata, int mask) {
  * we can just write the replies to the client output buffer without any
  * need to use a syscall in order to install the writable event handler,
  * get it called, and so forth. */
+// 在进入event loop之前来使用这个函数，来添加写事件
 int handleClientsWithPendingWrites(void) {
     listIter li;
     listNode *ln;
     int processed = listLength(server.clients_pending_write);
 
+    // 获取遍历的迭代器
     listRewind(server.clients_pending_write,&li);
     while((ln = listNext(&li))) {
+        // 获取该client
         client *c = listNodeValue(ln);
+        // 清除这个标志位
         c->flags &= ~CLIENT_PENDING_WRITE;
+        // 删除在链表中的这个节点
         listDelNode(server.clients_pending_write,ln);
 
         /* Try to write buffers to the client socket. */
@@ -1068,7 +1091,9 @@ int handleClientsWithPendingWrites(void) {
 
         /* If after the synchronous writes above we still have data to
          * output to the client, we need to install the writable handler. */
+        // 如果没有写完
         if (clientHasPendingReplies(c)) {
+            // 继续监听写事件事件
             int ae_flags = AE_WRITABLE;
             /* For the fsync=always policy, we want that a given FD is never
              * served for reading and writing in the same event loop iteration,
@@ -1078,12 +1103,15 @@ int handleClientsWithPendingWrites(void) {
             if (server.aof_state == AOF_ON &&
                 server.aof_fsync == AOF_FSYNC_ALWAYS)
             {
+                // 不在一个循环中同时处理读和写事件
                 ae_flags |= AE_BARRIER;
             }
+            // 添加事件
             if (aeCreateFileEvent(server.el, c->fd, ae_flags,
                 sendReplyToClient, c) == AE_ERR)
             {
-                    freeClientAsync(c);
+                // 异步的删除这个client
+                freeClientAsync(c);
             }
         }
     }
@@ -1979,6 +2007,7 @@ int getClientType(client *c) {
     return CLIENT_TYPE_NORMAL;
 }
 
+// 客户端的类型
 int getClientTypeByName(char *name) {
     if (!strcasecmp(name,"normal")) return CLIENT_TYPE_NORMAL;
     else if (!strcasecmp(name,"slave")) return CLIENT_TYPE_SLAVE;
@@ -2007,14 +2036,17 @@ int checkClientOutputBufferLimits(client *c) {
     int soft = 0, hard = 0, class;
     unsigned long used_mem = getClientOutputBufferMemoryUsage(c);
 
+    // 获取客户端类型
     class = getClientType(c);
     /* For the purpose of output buffer limiting, masters are handled
      * like normal clients. */
     if (class == CLIENT_TYPE_MASTER) class = CLIENT_TYPE_NORMAL;
 
+    // 达到硬限制
     if (server.client_obuf_limits[class].hard_limit_bytes &&
         used_mem >= server.client_obuf_limits[class].hard_limit_bytes)
         hard = 1;
+    // 达到软限制
     if (server.client_obuf_limits[class].soft_limit_bytes &&
         used_mem >= server.client_obuf_limits[class].soft_limit_bytes)
         soft = 1;
@@ -2157,6 +2189,7 @@ int processEventsWhileBlocked(void) {
     int count = 0;
     while (iterations--) {
         int events = 0;
+        // events是这次event loop返回的激活的事件数
         events += aeProcessEvents(server.el, AE_FILE_EVENTS|AE_DONT_WAIT);
         events += handleClientsWithPendingWrites();
         if (!events) break;
