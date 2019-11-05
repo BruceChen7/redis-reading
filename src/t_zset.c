@@ -147,24 +147,32 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
             rank[i] += x->level[i].span;
             x = x->level[i].forward;
         }
+        // 记录查找过程中查找到的节点
         update[i] = x;
     }
     /* we assume the element is not already inside, since we allow duplicated
      * scores, reinserting the same element should never happen since the
      * caller of zslInsert() should test in the hash table if the element is
      * already inside or not. */
+    // 生成该节点的level
     level = zslRandomLevel();
+
+    // 如果大于这个skiplist节点最高的
     if (level > zsl->level) {
         for (i = zsl->level; i < level; i++) {
             rank[i] = 0;
             update[i] = zsl->header;
             update[i]->level[i].span = zsl->length;
         }
+        // 更新最高的level
         zsl->level = level;
     }
+    // 创建一个节点
     x = zslCreateNode(level,score,ele);
     for (i = 0; i < level; i++) {
+        // 更新创建节点的指向指针
         x->level[i].forward = update[i]->level[i].forward;
+        /* 该层指向了x */
         update[i]->level[i].forward = x;
 
         /* update span covered by update[i] as x is inserted here */
