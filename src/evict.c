@@ -77,7 +77,9 @@ unsigned int getLRUClock(void) {
  * precomputed value, otherwise we need to resort to a system call. */
 unsigned int LRU_CLOCK(void) {
     unsigned int lruclock;
+    // 当前的精度 <= 配置的精度
     if (1000/server.hz <= LRU_CLOCK_RESOLUTION) {
+        // 实际上是按照mutex来实现的
         atomicGet(server.lruclock,lruclock);
     } else {
         lruclock = getLRUClock();
@@ -88,10 +90,13 @@ unsigned int LRU_CLOCK(void) {
 /* Given an object returns the min number of milliseconds the object was never
  * requested, using an approximated LRU algorithm. */
 unsigned long long estimateObjectIdleTime(robj *o) {
+    //  获取当前LRU时钟
     unsigned long long lruclock = LRU_CLOCK();
+    // 如果当前LRU时钟大于当前时钟
     if (lruclock >= o->lru) {
         return (lruclock - o->lru) * LRU_CLOCK_RESOLUTION;
     } else {
+        // 溢出了，计算key的逻辑时钟
         return (lruclock + (LRU_CLOCK_MAX - o->lru)) *
                     LRU_CLOCK_RESOLUTION;
     }
@@ -140,6 +145,7 @@ void evictionPoolAlloc(void) {
     struct evictionPoolEntry *ep;
     int j;
 
+    // 最多16个
     ep = zmalloc(sizeof(*ep)*EVPOOL_SIZE);
     for (j = 0; j < EVPOOL_SIZE; j++) {
         ep[j].idle = 0;
@@ -163,6 +169,7 @@ void evictionPoolPopulate(int dbid, dict *sampledict, dict *keydict, struct evic
     int j, k, count;
     dictEntry *samples[server.maxmemory_samples];
 
+    // 随机的获取一些key到sample中
     count = dictGetSomeKeys(sampledict,samples,server.maxmemory_samples);
     for (j = 0; j < count; j++) {
         unsigned long long idle;
@@ -315,8 +322,12 @@ unsigned long LFUTimeElapsed(unsigned long ldt) {
 uint8_t LFULogIncr(uint8_t counter) {
     if (counter == 255) return 255;
     double r = (double)rand()/RAND_MAX;
+    // LFU_INIT_VAL为5
+    // counter 本身越大，baseval 就越大 p 就越小，增加的可能性越小
     double baseval = counter - LFU_INIT_VAL;
     if (baseval < 0) baseval = 0;
+
+    // 默认是CONFIG_DEFAULT_LFU_LOG_FACTOR, 为10
     double p = 1.0/(baseval*server.lfu_log_factor+1);
     if (r < p) counter++;
     return counter;
@@ -398,6 +409,7 @@ int getMaxmemoryState(size_t *total, size_t *logical, size_t *tofree, float *lev
 
     /* Check if we are over the memory usage limit. If we are not, no need
      * to subtract the slaves output buffers. We can just return ASAP. */
+    // 使用的内存
     mem_reported = zmalloc_used_memory();
     if (total) *total = mem_reported;
 
@@ -447,6 +459,7 @@ int freeMemoryIfNeeded(void) {
     size_t mem_reported, mem_tofree, mem_freed;
     mstime_t latency, eviction_latency;
     long long delta;
+    // 获取slave节点
     int slaves = listLength(server.slaves);
 
     /* When clients are paused the dataset should be static not just from the
@@ -461,7 +474,9 @@ int freeMemoryIfNeeded(void) {
     if (server.maxmemory_policy == MAXMEMORY_NO_EVICTION)
         goto cant_free; /* We need to free memory, but policy forbids. */
 
+    // 开始启动监视
     latencyStartMonitor(latency);
+    // 如果已经要释放的内存小于将要释放的内存
     while (mem_freed < mem_tofree) {
         int j, k, i, keys_freed = 0;
         static unsigned int next_db = 0;
@@ -491,6 +506,7 @@ int freeMemoryIfNeeded(void) {
                         total_keys += keys;
                     }
                 }
+                // 没有key来释放，那么直接退出
                 if (!total_keys) break; /* No keys to evict. */
 
                 /* Go backward from best to worst element to evict. */
