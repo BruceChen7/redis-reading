@@ -43,7 +43,9 @@
  * Then logarithmically increment the counter, and update the access time. */
 void updateLFU(robj *val) {
     unsigned long counter = LFUDecrAndReturn(val);
+    // 更新一个对象的访问计数
     counter = LFULogIncr(counter);
+    // 对该对象更新
     val->lru = (LFUGetTimeInMinutes()<<8) | counter;
 }
 
@@ -62,6 +64,7 @@ robj *lookupKey(redisDb *db, robj *key, int flags) {
             server.aof_child_pid == -1 &&
             !(flags & LOOKUP_NOTOUCH))
         {
+            // 设置了lfu，你把么更新lfu
             if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
                 updateLFU(val);
             } else {

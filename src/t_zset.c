@@ -82,6 +82,7 @@ zskiplist *zslCreate(void) {
     zskiplist *zsl;
 
     zsl = zmalloc(sizeof(*zsl));
+    // 默认的初始level为1开始
     zsl->level = 1;
     zsl->length = 0;
     zsl->header = zslCreateNode(ZSKIPLIST_MAXLEVEL,0,NULL);
@@ -106,7 +107,9 @@ void zslFreeNode(zskiplistNode *node) {
 void zslFree(zskiplist *zsl) {
     zskiplistNode *node = zsl->header->level[0].forward, *next;
 
+    // 删除header节点
     zfree(zsl->header);
+    // skilist level 0 将整个节点串联起来
     while(node) {
         next = node->level[0].forward;
         zslFreeNode(node);
@@ -136,18 +139,23 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
 
     serverAssert(!isnan(score));
     x = zsl->header;
+    // 从最高层开始遍历，最高一层为level -1
     for (i = zsl->level-1; i >= 0; i--) {
         /* store rank that is crossed to reach the insert position */
+        // rank是每一个需要修改节点level, 中间的间隔
         rank[i] = i == (zsl->level-1) ? 0 : rank[i+1];
+        // 一直找到第一个比这个节点的大的
         while (x->level[i].forward &&
                 (x->level[i].forward->score < score ||
                     (x->level[i].forward->score == score &&
                     sdscmp(x->level[i].forward->ele,ele) < 0)))
         {
+            // 更新该层span
             rank[i] += x->level[i].span;
             x = x->level[i].forward;
         }
         // 记录查找过程中查找到的节点
+        // i 表示的是每一层
         update[i] = x;
     }
     /* we assume the element is not already inside, since we allow duplicated
@@ -157,11 +165,14 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
     // 生成该节点的level
     level = zslRandomLevel();
 
-    // 如果大于这个skiplist节点最高的
+    // 如果大于这个skiplist节点最高的level
     if (level > zsl->level) {
+        // 目前的level到扩展的level设置
         for (i = zsl->level; i < level; i++) {
             rank[i] = 0;
+            // 该level设置更新的节点是头
             update[i] = zsl->header;
+            // 中间隔的节点是当前链表的长度
             update[i]->level[i].span = zsl->length;
         }
         // 更新最高的level
@@ -169,27 +180,32 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
     }
     // 创建一个节点
     x = zslCreateNode(level,score,ele);
+    // 设置小于level的节点
     for (i = 0; i < level; i++) {
         // 更新创建节点的指向指针
         x->level[i].forward = update[i]->level[i].forward;
         /* 该层指向了x */
         update[i]->level[i].forward = x;
 
+        // 更新该层的span
         /* update span covered by update[i] as x is inserted here */
         x->level[i].span = update[i]->level[i].span - (rank[0] - rank[i]);
         update[i]->level[i].span = (rank[0] - rank[i]) + 1;
     }
 
+    // 设置span
     /* increment span for untouched levels */
     for (i = level; i < zsl->level; i++) {
         update[i]->level[i].span++;
     }
 
+    // 更新backward指向
+    // update[0]是x前一个节点
     x->backward = (update[0] == zsl->header) ? NULL : update[0];
     if (x->level[0].forward)
         x->level[0].forward->backward = x;
     else
-        zsl->tail = x;
+        zsl->tail = x; // 该节点是最后一个节点
     zsl->length++;
     return x;
 }
@@ -199,12 +215,15 @@ void zslDeleteNode(zskiplist *zsl, zskiplistNode *x, zskiplistNode **update) {
     int i;
     for (i = 0; i < zsl->level; i++) {
         if (update[i]->level[i].forward == x) {
+            // 在之前的快读上
             update[i]->level[i].span += x->level[i].span - 1;
             update[i]->level[i].forward = x->level[i].forward;
         } else {
+            // 该level指向不是要删除的节点，跨度直接-1
             update[i]->level[i].span -= 1;
         }
     }
+    // 修改指针指向
     if (x->level[0].forward) {
         x->level[0].forward->backward = x->backward;
     } else {
@@ -228,6 +247,7 @@ int zslDelete(zskiplist *zsl, double score, sds ele, zskiplistNode **node) {
     int i;
 
     x = zsl->header;
+    // 从高level到低level遍历
     for (i = zsl->level-1; i >= 0; i--) {
         while (x->level[i].forward &&
                 (x->level[i].forward->score < score ||
@@ -236,6 +256,7 @@ int zslDelete(zskiplist *zsl, double score, sds ele, zskiplistNode **node) {
         {
             x = x->level[i].forward;
         }
+        // 记录沿途查找的节点
         update[i] = x;
     }
     /* We may have multiple elements with the same score, what we need
@@ -243,9 +264,12 @@ int zslDelete(zskiplist *zsl, double score, sds ele, zskiplistNode **node) {
     x = x->level[0].forward;
     if (x && score == x->score && sdscmp(x->ele,ele) == 0) {
         zslDeleteNode(zsl, x, update);
+        // 为NULL,直接删除
         if (!node)
+            // 删除该节点
             zslFreeNode(x);
         else
+            // 不为NULL,记录下来
             *node = x;
         return 1;
     }
@@ -323,25 +347,30 @@ int zslIsInRange(zskiplist *zsl, zrangespec *range) {
     if (range->min > range->max ||
             (range->min == range->max && (range->minex || range->maxex)))
         return 0;
+    // 获取尾巴节点
     x = zsl->tail;
     if (x == NULL || !zslValueGteMin(x->score,range))
         return 0;
+    // 获取最小的节点
     x = zsl->header->level[0].forward;
     if (x == NULL || !zslValueLteMax(x->score,range))
         return 0;
     return 1;
 }
 
+// 找到满足范围内的第一给节点
 /* Find the first node that is contained in the specified range.
  * Returns NULL when no element is contained in the range. */
 zskiplistNode *zslFirstInRange(zskiplist *zsl, zrangespec *range) {
     zskiplistNode *x;
     int i;
 
+    // 区间范围不在, 直接返回NULL
     /* If everything is out of range, return early. */
     if (!zslIsInRange(zsl,range)) return NULL;
 
     x = zsl->header;
+    // 从最高层级开始
     for (i = zsl->level-1; i >= 0; i--) {
         /* Go forward while *OUT* of range. */
         while (x->level[i].forward &&
@@ -496,6 +525,7 @@ unsigned long zslGetRank(zskiplist *zsl, double score, sds ele) {
             x = x->level[i].forward;
         }
 
+        // 找到了排名
         /* x might be equal to zsl->header, so test if obj is non-NULL */
         if (x->ele && sdscmp(x->ele,ele) == 0) {
             return rank;
@@ -1189,11 +1219,13 @@ void zsetConvert(robj *zobj, int encoding) {
         unsigned int vlen;
         long long vlong;
 
+        // 目标encoding 必须是skiplist
         if (encoding != OBJ_ENCODING_SKIPLIST)
             serverPanic("Unknown target encoding");
 
         zs = zmalloc(sizeof(*zs));
         zs->dict = dictCreate(&zsetDictType,NULL);
+        // 创建zset
         zs->zsl = zslCreate();
 
         eptr = ziplistIndex(zl,0);
@@ -1209,12 +1241,16 @@ void zsetConvert(robj *zobj, int encoding) {
             else
                 ele = sdsnewlen((char*)vstr,vlen);
 
+            // 在skiplist中创建节点
             node = zslInsert(zs->zsl,score,ele);
+            // 在dict设置key指向score
             serverAssert(dictAdd(zs->dict,ele,&node->score) == DICT_OK);
             zzlNext(zl,&eptr,&sptr);
         }
 
+        // 删除原有的ziplist节点
         zfree(zobj->ptr);
+        // 换成zset
         zobj->ptr = zs;
         zobj->encoding = OBJ_ENCODING_SKIPLIST;
     } else if (zobj->encoding == OBJ_ENCODING_SKIPLIST) {
@@ -1226,6 +1262,7 @@ void zsetConvert(robj *zobj, int encoding) {
         /* Approach similar to zslFree(), since we want to free the skiplist at
          * the same time as creating the ziplist. */
         zs = zobj->ptr;
+        // 释放原有的字典
         dictRelease(zs->dict);
         node = zs->zsl->header->level[0].forward;
         zfree(zs->zsl->header);
@@ -1339,8 +1376,10 @@ int zsetAdd(robj *zobj, double score, sds ele, int *flags, double *newscore) {
     if (zobj->encoding == OBJ_ENCODING_ZIPLIST) {
         unsigned char *eptr;
 
+        // 获取当前的score
         if ((eptr = zzlFind(zobj->ptr,ele,&curscore)) != NULL) {
             /* NX? Return, same element already exists. */
+            // 仅仅是查询
             if (nx) {
                 *flags |= ZADD_NOP;
                 return 1;
@@ -1348,11 +1387,13 @@ int zsetAdd(robj *zobj, double score, sds ele, int *flags, double *newscore) {
 
             /* Prepare the score for the increment if needed. */
             if (incr) {
+                // 增加score
                 score += curscore;
                 if (isnan(score)) {
                     *flags |= ZADD_NAN;
                     return 0;
                 }
+                // 返回新的score
                 if (newscore) *newscore = score;
             }
 
@@ -1367,22 +1408,27 @@ int zsetAdd(robj *zobj, double score, sds ele, int *flags, double *newscore) {
             /* Optimize: check if the element is too large or the list
              * becomes too long *before* executing zzlInsert. */
             zobj->ptr = zzlInsert(zobj->ptr,ele,score);
+            // 如果数量大于一定值
             if (zzlLength(zobj->ptr) > server.zset_max_ziplist_entries)
+                // 转成skiplist来提高效率
                 zsetConvert(zobj,OBJ_ENCODING_SKIPLIST);
+
             if (sdslen(ele) > server.zset_max_ziplist_value)
                 zsetConvert(zobj,OBJ_ENCODING_SKIPLIST);
             if (newscore) *newscore = score;
+            // 添加
             *flags |= ZADD_ADDED;
             return 1;
         } else {
             *flags |= ZADD_NOP;
             return 1;
         }
-    } else if (zobj->encoding == OBJ_ENCODING_SKIPLIST) {
+    } else if (zobj->encoding == OBJ_ENCODING_SKIPLIST) { // 采用skiplist
         zset *zs = zobj->ptr;
         zskiplistNode *znode;
         dictEntry *de;
 
+        // 找到这个key
         de = dictFind(zs->dict,ele);
         if (de != NULL) {
             /* NX? Return, same element already exists. */
@@ -1390,6 +1436,7 @@ int zsetAdd(robj *zobj, double score, sds ele, int *flags, double *newscore) {
                 *flags |= ZADD_NOP;
                 return 1;
             }
+            // 找到
             curscore = *(double*)dictGetVal(de);
 
             /* Prepare the score for the increment if needed. */
@@ -1404,17 +1451,22 @@ int zsetAdd(robj *zobj, double score, sds ele, int *flags, double *newscore) {
 
             /* Remove and re-insert when score changes. */
             if (score != curscore) {
+                // 更新score
                 znode = zslUpdateScore(zs->zsl,curscore,ele,score);
                 /* Note that we did not removed the original element from
                  * the hash table representing the sorted set, so we just
                  * update the score. */
+                // 存储的是score的指针
                 dictGetVal(de) = &znode->score; /* Update score ptr. */
                 *flags |= ZADD_UPDATED;
             }
             return 1;
         } else if (!xx) {
+            // 复制键
             ele = sdsdup(ele);
+            // 直接插入该节点
             znode = zslInsert(zs->zsl,score,ele);
+            // 插入键和对应的值
             serverAssert(dictAdd(zs->dict,ele,&znode->score) == DICT_OK);
             *flags |= ZADD_ADDED;
             if (newscore) *newscore = score;
@@ -1486,6 +1538,7 @@ long zsetRank(robj *zobj, sds ele, int reverse) {
 
     llen = zsetLength(zobj);
 
+    // 如果
     if (zobj->encoding == OBJ_ENCODING_ZIPLIST) {
         unsigned char *zl = zobj->ptr;
         unsigned char *eptr, *sptr;

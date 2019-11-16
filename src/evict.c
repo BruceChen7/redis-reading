@@ -78,6 +78,7 @@ unsigned int getLRUClock(void) {
 unsigned int LRU_CLOCK(void) {
     unsigned int lruclock;
     // 当前的精度 <= 配置的精度
+    // 频率越高，直接使用当前的lruclock
     if (1000/server.hz <= LRU_CLOCK_RESOLUTION) {
         // 实际上是按照mutex来实现的
         atomicGet(server.lruclock,lruclock);
@@ -150,6 +151,7 @@ void evictionPoolAlloc(void) {
     for (j = 0; j < EVPOOL_SIZE; j++) {
         ep[j].idle = 0;
         ep[j].key = NULL;
+        // 醉倒255个字节
         ep[j].cached = sdsnewlen(NULL,EVPOOL_CACHED_SDS_SIZE);
         ep[j].dbid = 0;
     }
@@ -191,9 +193,11 @@ void evictionPoolPopulate(int dbid, dict *sampledict, dict *keydict, struct evic
         /* Calculate the idle time according to the policy. This is called
          * idle just because the code initially handled LRU, but is in fact
          * just a score where an higher score means better candidate. */
+        // less recently used
         if (server.maxmemory_policy & MAXMEMORY_FLAG_LRU) {
+            // 估算对象的idle时间
             idle = estimateObjectIdleTime(o);
-        } else if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) {
+        } else if (server.maxmemory_policy & MAXMEMORY_FLAG_LFU) { // least frequency used
             /* When we use an LRU policy, we sort the keys by idle time
              * so that we expire keys starting from greater idle time.
              * However when the policy is an LFU one, we have a frequency
@@ -213,14 +217,20 @@ void evictionPoolPopulate(int dbid, dict *sampledict, dict *keydict, struct evic
          * First, find the first empty bucket or the first populated
          * bucket that has an idle time smaller than our idle time. */
         k = 0;
+        // 找到第一个idle时间比our idle 时间大
+        // 整个是按照idle时间从小到大排列
         while (k < EVPOOL_SIZE &&
                pool[k].key &&
                pool[k].idle < idle) k++;
+
+        // 这里代码主要是腾出多余的空间
+        // 如果最小的idle时间，都比当前的大, 并且已经满了，
+        // 直接丢弃
         if (k == 0 && pool[EVPOOL_SIZE-1].key != NULL) {
             /* Can't insert if the element is < the worst element we have
              * and there are no empty buckets. */
             continue;
-        } else if (k < EVPOOL_SIZE && pool[k].key == NULL) {
+        } else if (k < EVPOOL_SIZE && pool[k].key == NULL) { // 直接插入到了一个空的位置
             /* Inserting into empty position. No setup needed before insert. */
         } else {
             /* Inserting in the middle. Now k points to the first element
@@ -231,10 +241,13 @@ void evictionPoolPopulate(int dbid, dict *sampledict, dict *keydict, struct evic
 
                 /* Save SDS before overwriting. */
                 sds cached = pool[EVPOOL_SIZE-1].cached;
+                // 从前面移动到后面
                 memmove(pool+k+1,pool+k,
                     sizeof(pool[0])*(EVPOOL_SIZE-k-1));
                 pool[k].cached = cached;
-            } else {
+            } else {  // 没有多余的space
+                // 丢弃第一个item
+                // 左移
                 /* No free space on right? Insert at k-1 */
                 k--;
                 /* Shift all elements on the left of k (included) to the
@@ -250,12 +263,16 @@ void evictionPoolPopulate(int dbid, dict *sampledict, dict *keydict, struct evic
          * because allocating and deallocating this object is costly
          * (according to the profiler, not my fantasy. Remember:
          * premature optimizbla bla bla bla. */
+        // 键的长度
         int klen = sdslen(key);
         if (klen > EVPOOL_CACHED_SDS_SIZE) {
+            // klen太大，那么直接copy一份
             pool[k].key = sdsdup(key);
         } else {
+            // 直接复制key到cached字段
             memcpy(pool[k].cached,key,klen+1);
             sdssetlen(pool[k].cached,klen);
+            // 两个字段公用一个字段
             pool[k].key = pool[k].cached;
         }
         pool[k].idle = idle;
@@ -328,7 +345,7 @@ uint8_t LFULogIncr(uint8_t counter) {
     if (baseval < 0) baseval = 0;
 
     // 默认是CONFIG_DEFAULT_LFU_LOG_FACTOR, 为10
-    double p = 1.0/(baseval*server.lfu_log_factor+1);
+    double p = 1.0/(baseval*server.lfu_log_factor+2);
     if (r < p) counter++;
     return counter;
 }
@@ -344,7 +361,9 @@ uint8_t LFULogIncr(uint8_t counter) {
  * to fit: as we check for the candidate, we incrementally decrement the
  * counter of the scanned objects if needed. */
 unsigned long LFUDecrAndReturn(robj *o) {
+    // 丢弃8位
     unsigned long ldt = o->lru >> 8;
+    // 对计数部分取模
     unsigned long counter = o->lru & 255;
     unsigned long num_periods = server.lfu_decay_time ? LFUTimeElapsed(ldt) / server.lfu_decay_time : 0;
     if (num_periods)
@@ -489,8 +508,10 @@ int freeMemoryIfNeeded(void) {
         if (server.maxmemory_policy & (MAXMEMORY_FLAG_LRU|MAXMEMORY_FLAG_LFU) ||
             server.maxmemory_policy == MAXMEMORY_VOLATILE_TTL)
         {
+            // 全局的pool
             struct evictionPoolEntry *pool = EvictionPoolLRU;
 
+            // 没有找到最适合释放的key
             while(bestkey == NULL) {
                 unsigned long total_keys = 0, keys;
 
@@ -498,7 +519,9 @@ int freeMemoryIfNeeded(void) {
                  * so to start populate the eviction pool sampling keys from
                  * every DB. */
                 for (i = 0; i < server.dbnum; i++) {
+                    // db号设置
                     db = server.db+i;
+                    // 如果是对所有的key采用evict策略，那么采样的字典为db->dict
                     dict = (server.maxmemory_policy & MAXMEMORY_FLAG_ALLKEYS) ?
                             db->dict : db->expires;
                     if ((keys = dictSize(dict)) != 0) {
@@ -511,9 +534,11 @@ int freeMemoryIfNeeded(void) {
 
                 /* Go backward from best to worst element to evict. */
                 for (k = EVPOOL_SIZE-1; k >= 0; k--) {
+                    // 如果key为空, 下一个
                     if (pool[k].key == NULL) continue;
                     bestdbid = pool[k].dbid;
 
+                    // 针对的是所有的key
                     if (server.maxmemory_policy & MAXMEMORY_FLAG_ALLKEYS) {
                         de = dictFind(server.db[pool[k].dbid].dict,
                             pool[k].key);
@@ -522,9 +547,11 @@ int freeMemoryIfNeeded(void) {
                             pool[k].key);
                     }
 
+                    // 如果没有key的多个引用，直接释放掉
                     /* Remove the entry from the pool. */
                     if (pool[k].key != pool[k].cached)
                         sdsfree(pool[k].key);
+                    // 初始化该pool item
                     pool[k].key = NULL;
                     pool[k].idle = 0;
 
@@ -536,8 +563,8 @@ int freeMemoryIfNeeded(void) {
                     } else {
                         /* Ghost... Iterate again. */
                     }
-                }
-            }
+                }   // end of iteration on pool
+            }  // end of while
         }
 
         /* volatile-random and allkeys-random policy */
@@ -561,10 +588,12 @@ int freeMemoryIfNeeded(void) {
             }
         }
 
+        // 找到了一个key
         /* Finally remove the selected key. */
         if (bestkey) {
             db = server.db+bestdbid;
             robj *keyobj = createStringObject(bestkey,sdslen(bestkey));
+            // 发布删除事件
             propagateExpire(db,keyobj,server.lazyfree_lazy_eviction);
             /* We compute the amount of memory freed by db*Delete() alone.
              * It is possible that actually the memory needed to propagate
@@ -577,14 +606,18 @@ int freeMemoryIfNeeded(void) {
             delta = (long long) zmalloc_used_memory();
             latencyStartMonitor(eviction_latency);
             if (server.lazyfree_lazy_eviction)
+                / // 异步删除key
                 dbAsyncDelete(db,keyobj);
             else
                 dbSyncDelete(db,keyobj);
             latencyEndMonitor(eviction_latency);
+            // 添加事件
             latencyAddSampleIfNeeded("eviction-del",eviction_latency);
             latencyRemoveNestedEvent(latency,eviction_latency);
             delta -= (long long) zmalloc_used_memory();
+            // 获取删除的内存数
             mem_freed += delta;
+            // 添加消除的键数
             server.stat_evictedkeys++;
             notifyKeyspaceEvent(NOTIFY_EVICTED, "evicted",
                 keyobj, db->id);
