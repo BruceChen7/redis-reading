@@ -125,7 +125,7 @@ volatile unsigned long lru_clock; /* Server global current LRU time. */
  *    are not fast commands.
  */
 struct redisCommand redisCommandTable[] = {
-    {"module",moduleCommand,-2,"as",0,NULL,0,0,0,0,0}, 
+    {"module",moduleCommand,-2,"as",0,NULL,0,0,0,0,0},
     {"get",getCommand,2,"rF",0,NULL,1,1,1,0,0}, // 第一个参数命令名称，函数指针，
     {"set",setCommand,-3,"wm",0,NULL,1,1,1,0,0},
     {"setnx",setnxCommand,3,"wmF",0,NULL,1,1,1,0,0},
@@ -346,7 +346,7 @@ void serverLogRaw(int level, const char *msg) {
 
     fp = log_to_stdout ? stdout : fopen(server.logfile,"a");
     if (!fp) return;
-	
+
     if (rawmode) {
         fprintf(fp,"%s",msg);
     } else {
@@ -1344,6 +1344,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
     /* Run the Sentinel timer if we are in sentinel mode. */
     run_with_period(100) {
+        // 哨兵逻辑的定时执行
         if (server.sentinel_mode) sentinelTimer();
     }
 
@@ -1385,6 +1386,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
      * may change the state of Redis Cluster (from ok to fail or vice versa),
      * so it's a good idea to call it before serving the unblocked clients
      * later in this function. */
+    // 处理集群信息
     if (server.cluster_enabled) clusterBeforeSleep();
 
     /* Run a fast expire cycle (the called function will return
@@ -1537,6 +1539,7 @@ void createSharedObjects(void) {
     shared.maxstring = sdsnew("maxstring");
 }
 
+// 初始化server状态
 void initServerConfig(void) {
     int j;
 
@@ -2188,6 +2191,7 @@ void initServer(void) {
         server.maxmemory_policy = MAXMEMORY_NO_EVICTION;
     }
 
+    //打开了集群, 在配置文件中，用来初始化集群信息
     if (server.cluster_enabled) clusterInit();
     replicationScriptCacheInit();
     scriptingInit(1);
@@ -4043,7 +4047,7 @@ int main(int argc, char **argv) {
     /* We need to initialize our libraries, and the server configuration. */
 #ifdef INIT_SETPROCTITLE_REPLACEMENT
     spt_init(argc, argv);
-#endif// 
+#endif//
     setlocale(LC_COLLATE,"");
     tzset(); /* Populates 'timezone' global. */
     zmalloc_set_oom_handler(redisOutOfMemoryHandler);  // 注册oom函数回调
@@ -4054,6 +4058,7 @@ int main(int argc, char **argv) {
     getRandomHexChars(hashseed,sizeof(hashseed));
     dictSetHashFunctionSeed((uint8_t*)hashseed);
 	// 启动是否时按照sential来启动
+    // redis-server --sentinel来启动
     server.sentinel_mode = checkForSentinelMode(argc,argv);
     initServerConfig();
     moduleInitModulesSystem();

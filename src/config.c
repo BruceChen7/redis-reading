@@ -234,6 +234,7 @@ void loadServerConfigFromString(char *config) {
             }
             for (j = 0; j < addresses; j++)
                 server.bindaddr[j] = zstrdup(argv[j+1]);
+            // 绑定端口数量
             server.bindaddr_count = addresses;
         } else if (!strcasecmp(argv[0],"unixsocket") && argc == 2) {
             server.unixsocket = zstrdup(argv[1]);
@@ -610,6 +611,7 @@ void loadServerConfigFromString(char *config) {
                 }
             }
         } else if (!strcasecmp(argv[0],"cluster-enabled") && argc == 2) {
+            // 这里用来初始化
             if ((server.cluster_enabled = yesnotoi(argv[1])) == -1) {
                 err = "argument must be 'yes' or 'no'"; goto loaderr;
             }

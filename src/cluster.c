@@ -44,6 +44,7 @@
 /* A global reference to myself is handy to make code more clear.
  * Myself always points to server.cluster->myself, that is, the clusterNode
  * that represents this node. */
+// 全局实例
 clusterNode *myself = NULL;
 
 clusterNode *createClusterNode(char *nodename, int flags);
@@ -88,12 +89,14 @@ void moduleCallClusterReceivers(const char *sender_id, uint64_t module_id, uint8
  * sake of locking if it does not already exist), C_ERR is returned.
  * If the configuration was loaded from the file, C_OK is returned. */
 int clusterLoadConfig(char *filename) {
+    // 以读的模式打开
     FILE *fp = fopen(filename,"r");
     struct stat sb;
     char *line;
     int maxline, j;
 
     if (fp == NULL) {
+        // 没有相关文件
         if (errno == ENOENT) {
             return C_ERR;
         } else {
@@ -106,6 +109,7 @@ int clusterLoadConfig(char *filename) {
 
     /* Check if the file is zero-length: if so return C_ERR to signal
      * we have to write the config. */
+    // 没有任何数据
     if (fstat(fileno(fp),&sb) != -1 && sb.st_size == 0) {
         fclose(fp);
         return C_ERR;
@@ -315,6 +319,7 @@ int clusterSaveConfig(int do_fsync) {
     struct stat sb;
     int fd;
 
+    // 清空标志位
     server.cluster->todo_before_sleep &= ~CLUSTER_TODO_SAVE_CONFIG;
 
     /* Get the nodes description and concatenate our "vars" directive to
@@ -325,6 +330,7 @@ int clusterSaveConfig(int do_fsync) {
         (unsigned long long) server.cluster->lastVoteEpoch);
     content_size = sdslen(ci);
 
+    // 打开文件按失败
     if ((fd = open(server.cluster_configfile,O_WRONLY|O_CREAT,0644))
         == -1) goto err;
 
@@ -332,12 +338,15 @@ int clusterSaveConfig(int do_fsync) {
     if (fstat(fd,&sb) != -1) {
         if (sb.st_size > (off_t)content_size) {
             ci = sdsgrowzero(ci,sb.st_size);
+            // 嵌入换行符号
             memset(ci+content_size,'\n',sb.st_size-content_size);
         }
     }
+    // 写文件
     if (write(fd,ci,sdslen(ci)) != (ssize_t)sdslen(ci)) goto err;
     if (do_fsync) {
         server.cluster->todo_before_sleep &= ~CLUSTER_TODO_FSYNC_CONFIG;
+        // 执行刷新
         fsync(fd);
     }
 
@@ -357,6 +366,7 @@ err:
 }
 
 void clusterSaveConfigOrDie(int do_fsync) {
+    // 用来保存cluster集群配置
     if (clusterSaveConfig(do_fsync) == -1) {
         serverLog(LL_WARNING,"Fatal: can't update cluster config file.");
         exit(1);
@@ -421,6 +431,7 @@ void clusterUpdateMyselfFlags(void) {
     myself->flags &= ~CLUSTER_NODE_NOFAILOVER;
     myself->flags |= nofailover;
     if (myself->flags != oldflags) {
+        // 更新配置
         clusterDoBeforeSleep(CLUSTER_TODO_SAVE_CONFIG|
                              CLUSTER_TODO_UPDATE_STATE);
     }
@@ -429,6 +440,7 @@ void clusterUpdateMyselfFlags(void) {
 void clusterInit(void) {
     int saveconf = 0;
 
+    // 初始化cluster但钱之
     server.cluster = zmalloc(sizeof(clusterState));
     server.cluster->myself = NULL;
     server.cluster->currentEpoch = 0;
@@ -444,30 +456,38 @@ void clusterInit(void) {
     server.cluster->failover_auth_epoch = 0;
     server.cluster->cant_failover_reason = CLUSTER_CANT_FAILOVER_NONE;
     server.cluster->lastVoteEpoch = 0;
+    // 消息数量
     for (int i = 0; i < CLUSTERMSG_TYPE_COUNT; i++) {
         server.cluster->stats_bus_messages_sent[i] = 0;
         server.cluster->stats_bus_messages_received[i] = 0;
     }
+    // 疑似下线节点数量为0
     server.cluster->stats_pfail_nodes = 0;
     memset(server.cluster->slots,0, sizeof(server.cluster->slots));
     clusterCloseAllSlots();
 
     /* Lock the cluster config file to make sure every node uses
      * its own nodes.conf. */
+    // 锁住集群节点配置
     if (clusterLockConfig(server.cluster_configfile) == C_ERR)
         exit(1);
 
     /* Load or create a new nodes configuration. */
+    // 加载集群配置
     if (clusterLoadConfig(server.cluster_configfile) == C_ERR) {
         /* No configuration found. We will just use the random name provided
          * by the createClusterNode() function. */
+        // 默认设置mater节点
         myself = server.cluster->myself =
             createClusterNode(NULL,CLUSTER_NODE_MYSELF|CLUSTER_NODE_MASTER);
         serverLog(LL_NOTICE,"No cluster configuration found, I'm %.40s",
             myself->name);
+        // 添加集群节点
+        // 吧自己添加到集群节点
         clusterAddNode(myself);
         saveconf = 1;
     }
+    // 第一次需要直接写文件
     if (saveconf) clusterSaveConfigOrDie(1);
 
     /* We need a listening TCP port for our cluster messaging needs. */
@@ -485,6 +505,7 @@ void clusterInit(void) {
         exit(1);
     }
 
+    // 一般 + 10000作为通信端口
     if (listenToPort(server.port+CLUSTER_PORT_INCR,
         server.cfd,&server.cfd_count) == C_ERR)
     {
@@ -493,6 +514,7 @@ void clusterInit(void) {
         int j;
 
         for (j = 0; j < server.cfd_count; j++) {
+            // 用来创建文件事件
             if (aeCreateFileEvent(server.el, server.cfd[j], AE_READABLE,
                 clusterAcceptHandler, NULL) == AE_ERR)
                     serverPanic("Unrecoverable error creating Redis Cluster "
@@ -501,12 +523,14 @@ void clusterInit(void) {
     }
 
     /* The slots -> keys map is a radix tree. Initialize it here. */
+    // 分配一个radix tree
     server.cluster->slots_to_keys = raxNew();
     memset(server.cluster->slots_keys_count,0,
            sizeof(server.cluster->slots_keys_count));
 
     /* Set myself->port / cport to my listening ports, we'll just need to
      * discover the IP address via MEET messages. */
+    // port
     myself->port = server.port;
     myself->cport = server.port+CLUSTER_PORT_INCR;
     if (server.cluster_announce_port)
@@ -626,6 +650,7 @@ void clusterAcceptHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     if (server.masterhost == NULL && server.loading) return;
 
     while(max--) {
+        // accept fd
         cfd = anetTcpAccept(server.neterr, fd, cip, sizeof(cip), &cport);
         if (cfd == ANET_ERR) {
             if (errno != EWOULDBLOCK)
@@ -633,7 +658,9 @@ void clusterAcceptHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
                     "Error accepting cluster node: %s", server.neterr);
             return;
         }
+        // 设置non-block
         anetNonBlock(NULL,cfd);
+        // 设置no-delay
         anetEnableTcpNoDelay(NULL,cfd);
 
         /* Use non-blocking I/O for cluster messages. */
@@ -644,7 +671,9 @@ void clusterAcceptHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
          * which node is, but the right node is references once we know the
          * node identity. */
         link = createClusterLink(NULL);
+        // 真正的通信bus
         link->fd = cfd;
+        // 设置non-blocing用来通信
         aeCreateFileEvent(server.el,cfd,AE_READABLE,clusterReadHandler,link);
     }
 }
@@ -697,7 +726,9 @@ clusterNode *createClusterNode(char *nodename, int flags) {
     if (nodename)
         memcpy(node->name, nodename, CLUSTER_NAMELEN);
     else
+        // 获取随机16进制作为节点名称
         getRandomHexChars(node->name, CLUSTER_NAMELEN);
+    // 获取当前时间戳
     node->ctime = mstime();
     node->configEpoch = 0;
     node->flags = flags;
@@ -1640,6 +1671,7 @@ int clusterProcessPacket(clusterLink *link) {
     if (totlen < 16) return 1; /* At least signature, version, totlen, count. */
     if (totlen > sdslen(link->rcvbuf)) return 1;
 
+    // 协议版本号不对
     if (ntohs(hdr->ver) != CLUSTER_PROTO_VER) {
         /* Can't handle messages of different versions. */
         return 1;
@@ -1773,9 +1805,11 @@ int clusterProcessPacket(clusterLink *link) {
          * the gossip section here since we have to trust the sender because
          * of the message type. */
         if (!sender && type == CLUSTERMSG_TYPE_MEET)
+            // 处理gossip消息
             clusterProcessGossipSection(hdr,link);
 
         /* Anyway reply with a PONG */
+        // 发送pong信息
         clusterSendPing(link,CLUSTERMSG_TYPE_PONG);
     }
 
@@ -2142,6 +2176,7 @@ void clusterReadHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
     UNUSED(mask);
 
     while(1) { /* Read as long as there is data to read. */
+        // 获取读buffer的数据
         rcvbuflen = sdslen(link->rcvbuf);
         if (rcvbuflen < 8) {
             /* First, obtain the first 8 bytes to get the full message
@@ -2150,6 +2185,7 @@ void clusterReadHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
         } else {
             /* Finally read the full message. */
             hdr = (clusterMsg*) link->rcvbuf;
+            // 等于8，消息错误
             if (rcvbuflen == 8) {
                 /* Perform some sanity check on the message signature
                  * and length. */
@@ -2166,7 +2202,7 @@ void clusterReadHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
             readlen = ntohl(hdr->totlen) - rcvbuflen;
             if (readlen > sizeof(buf)) readlen = sizeof(buf);
         }
-
+        // 获取实际数据长度
         nread = read(fd,buf,readlen);
         if (nread == -1 && errno == EAGAIN) return; /* No more data ready. */
 
@@ -2174,6 +2210,7 @@ void clusterReadHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
             /* I/O error... */
             serverLog(LL_DEBUG,"I/O error reading from node link: %s",
                 (nread == 0) ? "connection closed" : strerror(errno));
+            // 消息通道通信失败
             handleLinkIOError(link);
             return;
         } else {
@@ -2184,9 +2221,11 @@ void clusterReadHandler(aeEventLoop *el, int fd, void *privdata, int mask) {
         }
 
         /* Total length obtained? Process this packet. */
+        // 获取该packet
         if (rcvbuflen >= 8 && rcvbuflen == ntohl(hdr->totlen)) {
             if (clusterProcessPacket(link)) {
                 sdsfree(link->rcvbuf);
+                // 创建新的
                 link->rcvbuf = sdsempty();
             } else {
                 return; /* Link no longer valid. */
@@ -2380,6 +2419,7 @@ void clusterSendPing(clusterLink *link, int type) {
      * to feature our node, we set the number of entries per packet as
      * 10% of the total nodes we have. */
     wanted = floor(dictSize(server.cluster->nodes)/10);
+    // 至少3个节点
     if (wanted < 3) wanted = 3;
     if (wanted > freshnodes) wanted = freshnodes;
 
@@ -2395,6 +2435,7 @@ void clusterSendPing(clusterLink *link, int type) {
     /* Note: clusterBuildMessageHdr() expects the buffer to be always at least
      * sizeof(clusterMsg) or more. */
     if (totlen < (int)sizeof(clusterMsg)) totlen = sizeof(clusterMsg);
+    // 分配buffer大小
     buf = zcalloc(totlen);
     hdr = (clusterMsg*) buf;
 
@@ -2465,6 +2506,7 @@ void clusterSendPing(clusterLink *link, int type) {
     totlen += (sizeof(clusterMsgDataGossip)*gossipcount);
     hdr->count = htons(gossipcount);
     hdr->totlen = htonl(totlen);
+    // 发送消息
     clusterSendMessage(link,buf,totlen);
     zfree(buf);
 }
@@ -3364,6 +3406,7 @@ void clusterCron(void) {
         if (node->flags & (CLUSTER_NODE_MYSELF|CLUSTER_NODE_NOADDR)) continue;
 
         if (node->flags & CLUSTER_NODE_PFAIL)
+            // 怀疑节点处于下线状态
             server.cluster->stats_pfail_nodes++;
 
         /* A Node in HANDSHAKE state has a limited lifespan equal to the
@@ -3373,11 +3416,13 @@ void clusterCron(void) {
             continue;
         }
 
+        // 该节点tcp连接未建立
         if (node->link == NULL) {
             int fd;
             mstime_t old_ping_sent;
             clusterLink *link;
 
+            // 异步connect
             fd = anetTcpNonBlockBindConnect(server.neterr, node->ip,
                 node->cport, NET_FIRST_BIND_ADDR);
             if (fd == -1) {
@@ -3392,9 +3437,12 @@ void clusterCron(void) {
                     node->cport, server.neterr);
                 continue;
             }
+            // 创建link本身
             link = createClusterLink(node);
             link->fd = fd;
+            // 下次将不会进入这个逻辑分支
             node->link = link;
+            // 用来处理对端的rsp
             aeCreateFileEvent(server.el,link->fd,AE_READABLE,
                     clusterReadHandler,link);
             /* Queue a PING in the new connection ASAP: this is crucial
@@ -3403,7 +3451,9 @@ void clusterCron(void) {
              * If the node is flagged as MEET, we send a MEET message instead
              * of a PING one, to force the receiver to add us in its node
              * table. */
+            // 上次ping的时间
             old_ping_sent = node->ping_sent;
+            // 开始发送MEET消息
             clusterSendPing(link, node->flags & CLUSTER_NODE_MEET ?
                     CLUSTERMSG_TYPE_MEET : CLUSTERMSG_TYPE_PING);
             if (old_ping_sent) {
@@ -3417,6 +3467,8 @@ void clusterCron(void) {
              * to this node. Instead after the PONG is received and we
              * are no longer in meet/handshake status, we want to send
              * normal PING packets. */
+            // 已经发过了，那么无需再发MEET消息，直接清空该标志位.
+            // 没有收到回复，也不在发送MEET，收到了对方的回应，下次发送PING，这里直接清空了
             node->flags &= ~CLUSTER_NODE_MEET;
 
             serverLog(LL_DEBUG,"Connecting with Node %.40s at %s:%d",
@@ -3433,6 +3485,7 @@ void clusterCron(void) {
         /* Check a few random nodes and ping the one with the oldest
          * pong_received time. */
         for (j = 0; j < 5; j++) {
+            // 随机获取节点
             de = dictGetRandomKey(server.cluster->nodes);
             clusterNode *this = dictGetVal(de);
 
@@ -3445,6 +3498,7 @@ void clusterCron(void) {
                 min_pong = this->pong_received;
             }
         }
+        // 向没有最久没有收到pong的节点发送ping
         if (min_pong_node) {
             serverLog(LL_DEBUG,"Pinging node %.40s", min_pong_node->name);
             clusterSendPing(min_pong_node->link, CLUSTERMSG_TYPE_PING);
@@ -3463,9 +3517,11 @@ void clusterCron(void) {
     di = dictGetSafeIterator(server.cluster->nodes);
     while((de = dictNext(di)) != NULL) {
         clusterNode *node = dictGetVal(de);
+        // 获取当前时间
         now = mstime(); /* Use an updated time at every iteration. */
         mstime_t delay;
 
+        // 处于的状态不应该处理，直接过滤
         if (node->flags &
             (CLUSTER_NODE_MYSELF|CLUSTER_NODE_NOADDR|CLUSTER_NODE_HANDSHAKE))
                 continue;
@@ -3492,14 +3548,15 @@ void clusterCron(void) {
          * timeout, reconnect the link: maybe there is a connection
          * issue even if the node is alive. */
         if (node->link && /* is connected */
-            now - node->link->ctime >
+            now - node->link->ctime >  // link->ctime，是链接创建时间
             server.cluster_node_timeout && /* was not already reconnected */
-            node->ping_sent && /* we already sent a ping */
+            node->ping_sent && /* we already sent a ping */ // 已经发送了ping
             node->pong_received < node->ping_sent && /* still waiting pong */
             /* and we are waiting for the pong more than timeout/2 */
             now - node->ping_sent > server.cluster_node_timeout/2)
         {
             /* Disconnect the link, it will be reconnected automatically. */
+            // 下次重新建立链接
             freeClusterLink(node->link);
         }
 
@@ -3517,6 +3574,7 @@ void clusterCron(void) {
 
         /* If we are a master and one of the slaves requested a manual
          * failover, ping it continuously. */
+        // 如果这是一个主节点，并且从服务器请求手动故障转移，那么想从服务器发送ping
         if (server.cluster->mf_end &&
             nodeIsMaster(myself) &&
             server.cluster->mf_slave == node &&
@@ -3532,6 +3590,7 @@ void clusterCron(void) {
         /* Compute the delay of the PONG. Note that if we already received
          * the PONG, then node->ping_sent is zero, so can't reach this
          * code at all. */
+        // 计算等待pong的时长
         delay = now - node->ping_sent;
 
         if (delay > server.cluster_node_timeout) {
@@ -3540,6 +3599,7 @@ void clusterCron(void) {
             if (!(node->flags & (CLUSTER_NODE_PFAIL|CLUSTER_NODE_FAIL))) {
                 serverLog(LL_DEBUG,"*** NODE %.40s possibly failing",
                     node->name);
+                // 打开标记
                 node->flags |= CLUSTER_NODE_PFAIL;
                 update_state = 1;
             }
@@ -3561,6 +3621,7 @@ void clusterCron(void) {
     /* Abourt a manual failover if the timeout is reached. */
     manualFailoverCheckTimeout();
 
+    // 如果是slave节点
     if (nodeIsSlave(myself)) {
         clusterHandleManualFailover();
         clusterHandleSlaveFailover();
@@ -3574,6 +3635,7 @@ void clusterCron(void) {
     }
 
     if (update_state || server.cluster->state == CLUSTER_FAIL)
+        // 更新集群状态信息
         clusterUpdateState();
 }
 
@@ -3751,6 +3813,7 @@ void clusterUpdateState(void) {
     int j, new_state;
     int reachable_masters = 0;
     static mstime_t among_minority_time;
+    // 注意是static变量
     static mstime_t first_call_time = 0;
 
     server.cluster->todo_before_sleep &= ~CLUSTER_TODO_UPDATE_STATE;
@@ -3762,8 +3825,9 @@ void clusterUpdateState(void) {
      * the first call to this function and not since the server start, in order
      * to don't count the DB loading time. */
     if (first_call_time == 0) first_call_time = mstime();
+    // master节点
     if (nodeIsMaster(myself) &&
-        server.cluster->state == CLUSTER_FAIL &&
+        server.cluster->state == CLUSTER_FAIL &&  // 重启的时候，不要一开始上来就状态更新
         mstime() - first_call_time < CLUSTER_WRITABLE_DELAY) return;
 
     /* Start assuming the state is OK. We'll turn it into FAIL if there
@@ -3776,6 +3840,7 @@ void clusterUpdateState(void) {
             if (server.cluster->slots[j] == NULL ||
                 server.cluster->slots[j]->flags & (CLUSTER_NODE_FAIL))
             {
+                // 存在挂掉了的slot
                 new_state = CLUSTER_FAIL;
                 break;
             }
@@ -3977,6 +4042,7 @@ sds clusterGenNodeDescription(clusterNode *node) {
     sds ci;
 
     /* Node coordinates */
+    // 节点信息
     ci = sdscatprintf(sdsempty(),"%.40s %s:%d@%d ",
         node->name,
         node->ip,
@@ -4054,10 +4120,12 @@ sds clusterGenNodesDescription(int filter) {
     dictIterator *di;
     dictEntry *de;
 
+    // 获取当前集群列表
     di = dictGetSafeIterator(server.cluster->nodes);
     while((de = dictNext(di)) != NULL) {
         clusterNode *node = dictGetVal(de);
 
+        // 如果已经处理了，过滤
         if (node->flags & filter) continue;
         ni = clusterGenNodeDescription(node);
         ci = sdscatsds(ci,ni);
