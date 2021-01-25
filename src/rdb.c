@@ -1108,14 +1108,20 @@ int rdbSaveRio(rio *rdb, int *error, int flags, rdbSaveInfo *rsi) {
     size_t processed = 0;
 
     if (server.rdb_checksum)
+        // 设置校验和函数
         rdb->update_cksum = rioGenericUpdateChecksum;
+    // rdb文件格式
+    // 设置魔术
     snprintf(magic,sizeof(magic),"REDIS%04d",RDB_VERSION);
     if (rdbWriteRaw(rdb,magic,9) == -1) goto werr;
+    // 设置辅助信息
     if (rdbSaveInfoAuxFields(rdb,flags,rsi) == -1) goto werr;
 
+    // 遍历rdb
     for (j = 0; j < server.dbnum; j++) {
         redisDb *db = server.db+j;
         dict *d = db->dict;
+        // 跳过为空的数据库
         if (dictSize(d) == 0) continue;
         di = dictGetSafeIterator(d);
 
@@ -1130,18 +1136,26 @@ int rdbSaveRio(rio *rdb, int *error, int flags, rdbSaveInfo *rsi) {
         uint64_t db_size, expires_size;
         db_size = dictSize(db->dict);
         expires_size = dictSize(db->expires);
+        // 写入
         if (rdbSaveType(rdb,RDB_OPCODE_RESIZEDB) == -1) goto werr;
+        // 写入db
         if (rdbSaveLen(rdb,db_size) == -1) goto werr;
+        // 写入过期建数目
         if (rdbSaveLen(rdb,expires_size) == -1) goto werr;
 
+        // 遍历所有的键值对
         /* Iterate this DB writing every entry */
         while((de = dictNext(di)) != NULL) {
             sds keystr = dictGetKey(de);
             robj key, *o = dictGetVal(de);
             long long expire;
 
+            // 在栈中创建一个键对象并初始化
             initStaticStringObject(key,keystr);
+            // 当前的key的过期时间
             expire = getExpire(db,&key);
+
+            // 将数据保存
             if (rdbSaveKeyValuePair(rdb,&key,o,expire) == -1) goto werr;
 
             /* When this RDB is produced as part of an AOF rewrite, move
@@ -1174,12 +1188,14 @@ int rdbSaveRio(rio *rdb, int *error, int flags, rdbSaveInfo *rsi) {
     }
 
     /* EOF opcode */
+    // 设置eof文件结束
     if (rdbSaveType(rdb,RDB_OPCODE_EOF) == -1) goto werr;
 
     /* CRC64 checksum. It will be zero if checksum computation is disabled, the
      * loading code skips the check in this case. */
     cksum = rdb->cksum;
     memrev64ifbe(&cksum);
+    // 写入校验和
     if (rioWrite(rdb,&cksum,8) == 0) goto werr;
     return C_OK;
 
@@ -1217,15 +1233,18 @@ werr: /* Write error. */
 
 /* Save the DB on disk. Return C_ERR on error, C_OK on success. */
 int rdbSave(char *filename, rdbSaveInfo *rsi) {
+    // 默认的filename是dump.rdb
     char tmpfile[256];
     char cwd[MAXPATHLEN]; /* Current working dir path for error messages. */
     FILE *fp;
     rio rdb;
     int error = 0;
 
+    // 临时文件名称
     snprintf(tmpfile,256,"temp-%d.rdb", (int) getpid());
     fp = fopen(tmpfile,"w");
     if (!fp) {
+        // 获取当前的dir
         char *cwdp = getcwd(cwd,MAXPATHLEN);
         serverLog(LL_WARNING,
             "Failed opening the RDB file %s (in server root dir %s) "
@@ -1236,19 +1255,24 @@ int rdbSave(char *filename, rdbSaveInfo *rsi) {
         return C_ERR;
     }
 
+    // 用文件对象初始话rio对象
     rioInitWithFile(&rdb,fp);
 
     if (server.rdb_save_incremental_fsync)
         rioSetAutoSync(&rdb,REDIS_AUTOSYNC_BYTES);
 
+    // 将数库内容写到rio中
     if (rdbSaveRio(&rdb,&error,RDB_SAVE_NONE,rsi) == C_ERR) {
         errno = error;
         goto werr;
     }
 
     /* Make sure data will not remain on the OS's output buffers */
+    // 直接flush
     if (fflush(fp) == EOF) goto werr;
+    // 然后执行fsync
     if (fsync(fileno(fp)) == -1) goto werr;
+    // 关闭文件对象
     if (fclose(fp) == EOF) goto werr;
 
     /* Use RENAME to make sure the DB file is changed atomically only
@@ -1283,19 +1307,25 @@ int rdbSaveBackground(char *filename, rdbSaveInfo *rsi) {
     pid_t childpid;
     long long start;
 
+    // 如果正在进行rdb和aof操作, 那么直接返回
     if (server.aof_child_pid != -1 || server.rdb_child_pid != -1) return C_ERR;
 
+    //备份脏键
     server.dirty_before_bgsave = server.dirty;
     server.lastbgsave_try = time(NULL);
+    // 打开pipe，并设置为non-lock
     openChildInfoPipe();
 
     start = ustime();
+    // 子进程
     if ((childpid = fork()) == 0) {
         int retval;
 
         /* Child */
+        // 关闭相关端口
         closeListeningSockets(0);
         redisSetProcTitle("redis-rdb-bgsave");
+        // 执行保存操作
         retval = rdbSave(filename,rsi);
         if (retval == C_OK) {
             size_t private_dirty = zmalloc_get_private_dirty(-1);
@@ -1307,6 +1337,7 @@ int rdbSaveBackground(char *filename, rdbSaveInfo *rsi) {
             }
 
             server.child_info_data.cow_size = private_dirty;
+            // 给父进程发送子节点成功信息
             sendChildInfo(CHILD_INFO_TYPE_RDB);
         }
         exitFromChild((retval == C_OK) ? 0 : 1);
@@ -1869,7 +1900,7 @@ int rdbLoadRio(rio *rdb, rdbSaveInfo *rsi, int loading_aof) {
     /* Key-specific attributes, set by opcodes before the key type. */
     long long lru_idle = -1, lfu_freq = -1, expiretime = -1, now = mstime();
     long long lru_clock = LRU_CLOCK();
-    
+
     while(1) {
         robj *key, *val;
 
@@ -2018,7 +2049,7 @@ int rdbLoadRio(rio *rdb, rdbSaveInfo *rsi, int loading_aof) {
 
             /* Set the expire time if needed */
             if (expiretime != -1) setExpire(NULL,db,key,expiretime);
-            
+
             /* Set usage information (for eviction). */
             objectSetLRUOrLFU(val,lfu_freq,lru_idle,lru_clock);
 
@@ -2415,19 +2446,20 @@ void bgsaveCommand(client *c) {
     rdbSaveInfo rsi, *rsiptr;
     rsiptr = rdbPopulateSaveInfo(&rsi);
 
+    // 如果正在执行rdb持久话，本次退出
     if (server.rdb_child_pid != -1) {
         addReplyError(c,"Background save already in progress");
     } else if (server.aof_child_pid != -1) {
         if (schedule) {
             server.rdb_bgsave_scheduled = 1;
-            addReplyStatus(c,"Background saving scheduled");
+            addReplyStatus(c,"Background saving scheduled");//正在执行aof，那么提上议程
         } else {
             addReplyError(c,
                 "An AOF log rewriting in progress: can't BGSAVE right now. "
                 "Use BGSAVE SCHEDULE in order to schedule a BGSAVE whenever "
                 "possible.");
         }
-    } else if (rdbSaveBackground(server.rdb_filename,rsiptr) == C_OK) {
+    } else if (rdbSaveBackground(server.rdb_filename,rsiptr) == C_OK) { // 执行bgsave
         addReplyStatus(c,"Background saving started");
     } else {
         addReply(c,shared.err);

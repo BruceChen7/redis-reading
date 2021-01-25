@@ -288,6 +288,7 @@ void rioFreeFdset(rio *r) {
 /* This function can be installed both in memory and file streams when checksum
  * computation is needed. */
 void rioGenericUpdateChecksum(rio *r, const void *buf, size_t len) {
+    // 执行校验计算
     r->cksum = crc64(r->cksum,buf,len);
 }
 

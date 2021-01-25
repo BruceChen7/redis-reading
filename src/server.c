@@ -1242,7 +1242,9 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
         int statloc;
         pid_t pid;
 
+        // 等待子进程关闭
         if ((pid = wait3(&statloc,WNOHANG,NULL)) != 0) {
+            // 获取退出的错误码
             int exitcode = WEXITSTATUS(statloc);
             int bysignal = 0;
 
@@ -1259,6 +1261,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
                 if (!bysignal && exitcode == 0) receiveChildInfo();
             } else if (pid == server.aof_child_pid) {
                 backgroundRewriteDoneHandler(exitcode,bysignal);
+                // 获取子进程pipe信息
                 if (!bysignal && exitcode == 0) receiveChildInfo();
             } else {
                 if (!ldbRemoveChild(pid)) {
@@ -1322,6 +1325,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
      * however to try every second is enough in case of 'hz' is set to
      * an higher frequency. */
     run_with_period(1000) {
+        // 上次执行错误，那么这次刷
         if (server.aof_last_write_status == C_ERR)
             flushAppendOnlyFile(0);
     }
@@ -1423,6 +1427,7 @@ void beforeSleep(struct aeEventLoop *eventLoop) {
         processUnblockedClients();
 
     /* Write the AOF buffer on disk */
+    // 刷aof到磁盘
     flushAppendOnlyFile(0);
 
     // 在epoll之前来处理没有写完的socket
@@ -2332,6 +2337,7 @@ struct redisCommand *lookupCommandOrOriginal(sds name) {
  * This should not be used inside commands implementation. Use instead
  * alsoPropagate(), preventCommandPropagation(), forceCommandPropagation().
  */
+// 用来同步到AOF文件和slave中
 void propagate(struct redisCommand *cmd, int dbid, robj **argv, int argc,
                int flags)
 {

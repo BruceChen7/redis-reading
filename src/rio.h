@@ -66,7 +66,7 @@ struct _rio {
         struct {
             sds ptr;
             off_t pos;
-        } buffer;
+        } buffer;  // buffer
         /* Stdio file pointer target. */
         struct {
             FILE *fp;
