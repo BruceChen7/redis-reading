@@ -169,6 +169,7 @@ void queueLoadModule(sds path, sds *argv, int argc) {
     listAddNodeTail(server.loadmodule_queue,loadmod);
 }
 
+// 解析server的配置
 void loadServerConfigFromString(char *config) {
     char *err = NULL;
     int linenum = 0, totlines, i;
@@ -182,6 +183,7 @@ void loadServerConfigFromString(char *config) {
         int argc;
 
         linenum = i+1;
+        // 删除后面的结尾
         lines[i] = sdstrim(lines[i]," \t\r\n");
 
         /* Skip comments and blank lines */
@@ -757,7 +759,7 @@ void loadServerConfigFromString(char *config) {
             }
         } else if (!strcasecmp(argv[0],"loadmodule") && argc >= 2) {
             queueLoadModule(argv[1],&argv[2],argc-2);
-        } else if (!strcasecmp(argv[0],"sentinel")) {
+        } else if (!strcasecmp(argv[0],"sentinel")) { // 如果是sentinel
             /* argc == 1 is handled by main() as we need to enter the sentinel
              * mode ASAP. */
             if (argc != 1) {

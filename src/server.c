@@ -248,7 +248,7 @@ struct redisCommand redisCommandTable[] = {
     {"multi",multiCommand,1,"sF",0,NULL,0,0,0,0,0},
     {"exec",execCommand,1,"sM",0,NULL,0,0,0,0,0},
     {"discard",discardCommand,1,"sF",0,NULL,0,0,0,0,0},
-    {"sync",syncCommand,1,"ars",0,NULL,0,0,0,0,0},
+    {"sync",syncCommand,1,"ars",0,NULL,0,0,0,0,0}, // 相应sync command
     {"psync",syncCommand,3,"ars",0,NULL,0,0,0,0,0},
     {"replconf",replconfCommand,-1,"aslt",0,NULL,0,0,0,0,0},
     {"flushdb",flushdbCommand,-1,"w",0,NULL,0,0,0,0,0},
@@ -1339,6 +1339,7 @@ int serverCron(struct aeEventLoop *eventLoop, long long id, void *clientData) {
 
     /* Replication cron function -- used to reconnect to master,
      * detect transfer failures, start background RDB transfers and so forth. */
+    // 1秒执行1次
     run_with_period(1000) replicationCron();
 
     /* Run the Redis Cluster cron. */

@@ -52,8 +52,8 @@ ssize_t syncWrite(int fd, char *ptr, ssize_t size, long long timeout) {
     long long remaining = timeout;
 
     while(1) {
-    
-	    // 至少10ms。    
+
+	    // 至少10ms。
         long long wait = (remaining > SYNCIO__RESOLUTION) ?
                           remaining : SYNCIO__RESOLUTION;
         long long elapsed;
@@ -69,8 +69,8 @@ ssize_t syncWrite(int fd, char *ptr, ssize_t size, long long timeout) {
         }
         if (size == 0) return ret; // 已经全部写完。
 
-        /* Wait */  执行到这里时，说米那个上面的错误码是EAGAIN，或者是写了一部分.
-        aeWait(fd,AE_WRITABLE,wait);  // 
+        /* Wait */  // 执行到这里时，说米那个上面的错误码是EAGAIN，或者是写了一部分.
+        aeWait(fd,AE_WRITABLE,wait);  //
         elapsed = mstime() - start;
 		// 超时写
         if (elapsed >= timeout) {

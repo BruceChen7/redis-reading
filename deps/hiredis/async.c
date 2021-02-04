@@ -654,7 +654,7 @@ int redisvAsyncCommand(redisAsyncContext *ac, redisCallbackFn *fn, void *privdat
     int len;
     int status;
 	// 格式化命令
-	// cmd 
+	// cmd
     len = redisvFormatCommand(&cmd,format,ap);
 
     /* We don't want to pass -1 or -2 to future functions as a length. */
