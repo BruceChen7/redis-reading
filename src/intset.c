@@ -52,6 +52,7 @@ static uint8_t _intsetValueEncoding(int64_t v) {
     else if (v < INT16_MIN || v > INT16_MAX)
         return INTSET_ENC_INT32;
     else
+        // 16位
         return INTSET_ENC_INT16;
 }
 
@@ -109,6 +110,7 @@ intset *intsetNew(void) {
 
 /* Resize the intset */
 static intset *intsetResize(intset *is, uint32_t len) {
+    // 获取整个大小
     uint32_t size = len*intrev32ifbe(is->encoding);
     // 给contents分配的空间是size大小
     is = zrealloc(is,sizeof(intset)+size);
@@ -167,6 +169,7 @@ static uint8_t intsetSearch(intset *is, int64_t value, uint32_t *pos) {
 /* Upgrades the intset to a larger encoding and inserts the given integer. */
 static intset *intsetUpgradeAndAdd(intset *is, int64_t value) {
     uint8_t curenc = intrev32ifbe(is->encoding);
+    // 决定的encoding 编码
     uint8_t newenc = _intsetValueEncoding(value);
     // 获取set中int的个数
     int length = intrev32ifbe(is->length);
@@ -180,13 +183,16 @@ static intset *intsetUpgradeAndAdd(intset *is, int64_t value) {
     /* Upgrade back-to-front so we don't overwrite values.
      * Note that the "prepend" variable is used to make sure we have an empty
      * space at either the beginning or the end of the intset. */
+    // 从后到前的写入
     while(length--)
         _intsetSet(is,length+prepend,_intsetGetEncoded(is,length,curenc));
 
     /* Set the value at the beginning or the end. */
     if (prepend)
+        // 放到头一个位置
         _intsetSet(is,0,value);
     else
+        // 放到后面
         _intsetSet(is,intrev32ifbe(is->length),value);
     is->length = intrev32ifbe(intrev32ifbe(is->length)+1);
     return is;
@@ -232,7 +238,7 @@ intset *intsetAdd(intset *is, int64_t value, uint8_t *success) {
         /* Abort if the value is already present in the set.
          * This call will populate "pos" with the right position to insert
          * the value when it cannot be found. */
-        // 查找该值，如果该值知道了，那么返回添加失败
+        // 查找该值，如果该值找到了，那么返回添加失败
         if (intsetSearch(is,value,&pos)) {
             if (success) *success = 0;
             return is;
