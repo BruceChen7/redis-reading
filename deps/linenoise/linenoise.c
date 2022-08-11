@@ -199,12 +199,14 @@ FILE *lndebug_fp = NULL;
 
 /* Set if to use or not the multi line mode. */
 void linenoiseSetMultiLine(int ml) {
+    // 多行模式
     mlmode = ml;
 }
 
 /* Return true if the terminal name is in the list of terminals we know are
  * not able to understand basic escape sequences. */
 static int isUnsupportedTerm(void) {
+    // 获取环境变量
     char *term = getenv("TERM");
     int j;
 
@@ -1039,6 +1041,7 @@ char *linenoise(const char *prompt) {
     char buf[LINENOISE_MAX_LINE];
     int count;
 
+    // 非标准输入
     if (!isatty(STDIN_FILENO)) {
         /* Not a tty: read from file / pipe. In this mode we don't want any
          * limit to the line size, so we call a function to handle that. */
@@ -1046,8 +1049,11 @@ char *linenoise(const char *prompt) {
     } else if (isUnsupportedTerm()) {
         size_t len;
 
+        // 输出promt
         printf("%s",prompt);
+        // 写入到标准输出
         fflush(stdout);
+        // 没有输入
         if (fgets(buf,LINENOISE_MAX_LINE,stdin) == NULL) return NULL;
         len = strlen(buf);
         while(len && (buf[len-1] == '\n' || buf[len-1] == '\r')) {

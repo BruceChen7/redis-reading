@@ -22,6 +22,7 @@ char *hints(const char *buf, int *color, int *bold) {
 
 int main(int argc, char **argv) {
     char *line;
+    // porgrame 名称
     char *prgname = argv[0];
 
     /* Parse options, with --multiline we enable multi line editing. */
@@ -29,6 +30,7 @@ int main(int argc, char **argv) {
         argc--;
         argv++;
         if (!strcmp(*argv,"--multiline")) {
+            // 设置多行模式
             linenoiseSetMultiLine(1);
             printf("Multi-line mode enabled.\n");
         } else if (!strcmp(*argv,"--keycodes")) {
@@ -59,7 +61,9 @@ int main(int argc, char **argv) {
         /* Do something with the string. */
         if (line[0] != '\0' && line[0] != '/') {
             printf("echo: '%s'\n", line);
+            // 添加历史命令
             linenoiseHistoryAdd(line); /* Add to the history. */
+            // 保存到磁盘
             linenoiseHistorySave("history.txt"); /* Save the history on disk. */
         } else if (!strncmp(line,"/historylen",11)) {
             /* The "/historylen" command will change the history len. */
